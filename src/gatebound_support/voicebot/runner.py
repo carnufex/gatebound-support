@@ -45,10 +45,15 @@ def check(settings: Settings) -> int:
         problems.append("VOICE_MAX_MINUTES must be positive")
 
     try:
+        from .dave import dave_disabled, disable_dave
         from .opus_support import ensure_opus_loaded
 
         if not ensure_opus_loaded():
             problems.append("libopus could not be loaded (install libopus0)")
+
+        disable_dave()
+        if not dave_disabled():
+            problems.append("DAVE could not be disabled; received audio would be undecodable")
 
         # Touch every submodule so a broken import surfaces here, not at 3am on restart.
         from . import (  # noqa: F401
@@ -82,10 +87,13 @@ def run(settings: Settings) -> int:
         return 1
 
     from .bot import VoiceBot
+    from .dave import disable_dave
     from .opus_support import ensure_opus_loaded
 
     if not ensure_opus_loaded():
         logger.warning("libopus could not be loaded; voice will not work")
+    disable_dave()
+    logger.info("DAVE end-to-end encryption disabled for voice (transport encryption only)")
 
     bot = VoiceBot(settings)
     bot.run(settings.DISCORD_BOT_TOKEN, log_handler=None)

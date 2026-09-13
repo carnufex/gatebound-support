@@ -14,7 +14,11 @@ dependencies = [
     "jinja2>=3.1",
     "pyjwt>=2.9",
     "python-multipart>=0.0.12",
-    "discord-py[voice]>=2.4",
+    # Deliberately NOT the [voice] extra: it pulls in `davey`, which makes discord.py
+    # negotiate DAVE end-to-end encryption; sending then works but discord-ext-voice-recv
+    # cannot decrypt DAVE frames, so every received packet fails Opus decoding
+    # ("corrupted stream"). PyNaCl below is the only voice dependency we want.
+    "discord-py>=2.7",
     "discord-ext-voice-recv>=0.5.2a179",
     "pynacl>=1.5.0",
     "elevenlabs>=2.68.0",

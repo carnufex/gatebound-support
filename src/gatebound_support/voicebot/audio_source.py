@@ -10,6 +10,7 @@ it returns silence immediately when nothing is queued instead.
 from __future__ import annotations
 
 import queue
+import threading
 
 import discord
 
@@ -25,20 +26,34 @@ class QueuedPCMAudioSource(discord.AudioSource):
     thread-safe, not async-safe.
     """
 
-    def __init__(self, *, max_queued_seconds: float = 5.0) -> None:
+    def __init__(self, *, max_queued_seconds: float = 90.0) -> None:
+        # ElevenLabs streams TTS far faster than real time (a whole sentence lands in a
+        # burst), so the queue must hold a full agent turn; a 5 s cap dropped the oldest
+        # frames mid-sentence, which is what the 2026-09-13 test call sounded like
+        # ("two tracks on top of each other"). interrupt() empties it on barge-in.
         max_frames = max(1, int(max_queued_seconds * 50))  # 50 frames/sec at 20ms each
         self._queue: queue.Queue[bytes] = queue.Queue(maxsize=max_frames)
+        self._remainder = b""
+        self._remainder_lock = threading.Lock()
 
     def push(self, pcm_48k_stereo: bytes) -> None:
         """Splits arbitrary-length 48 kHz stereo PCM into 20 ms frames and enqueues them.
-        If the queue is already full (the caller is producing audio faster than Discord can
-        play it — shouldn't normally happen since the agent streams close to real-time, but
-        must not be allowed to grow memory unboundedly) the oldest frame is dropped to keep
-        latency bounded rather than accumulating a backlog."""
-        usable_len = len(pcm_48k_stereo) - (len(pcm_48k_stereo) % DISCORD_FRAME_BYTES)
+        SDK chunks are not frame-aligned, so the tail that does not fill a frame is kept
+        and prepended to the next push (dropping it left a gap in every chunk boundary).
+        If the queue is full the oldest frame is dropped so memory stays bounded."""
+        with self._remainder_lock:
+            data = self._remainder + pcm_48k_stereo
+            usable_len = len(data) - (len(data) % DISCORD_FRAME_BYTES)
+            self._remainder = data[usable_len:]
         for offset in range(0, usable_len, DISCORD_FRAME_BYTES):
-            frame = pcm_48k_stereo[offset : offset + DISCORD_FRAME_BYTES]
-            self._push_frame(frame)
+            self._push_frame(data[offset : offset + DISCORD_FRAME_BYTES])
+
+    def flush(self) -> None:
+        """Pads and enqueues the pending partial frame (end of an agent turn)."""
+        with self._remainder_lock:
+            tail, self._remainder = self._remainder, b""
+        if tail:
+            self._push_frame(tail + b"\x00" * (DISCORD_FRAME_BYTES - len(tail)))
 
     def _push_frame(self, frame: bytes) -> None:
         try:
@@ -56,6 +71,8 @@ class QueuedPCMAudioSource(discord.AudioSource):
     def interrupt(self) -> None:
         """Drops all buffered agent audio — called when the player barges in mid-sentence
         (``AudioInterface.interrupt``) so the agent doesn't keep talking over them."""
+        with self._remainder_lock:
+            self._remainder = b""
         while True:
             try:
                 self._queue.get_nowait()

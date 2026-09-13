@@ -61,3 +61,20 @@ def test_cleanup_clears_queue() -> None:
     source.push(bytes([3]) * DISCORD_FRAME_BYTES)
     source.cleanup()
     assert source.read() == SILENCE_FRAME
+
+
+def test_push_keeps_partial_frame_remainder_across_pushes():
+    from gatebound_support.voicebot.audio_source import SILENCE_FRAME, QueuedPCMAudioSource
+    from gatebound_support.voicebot.resampler import DISCORD_FRAME_BYTES
+
+    source = QueuedPCMAudioSource()
+    half = DISCORD_FRAME_BYTES // 2
+    source.push(b"\x01" * half)
+    assert source.read() == SILENCE_FRAME  # not a full frame yet, nothing dropped
+    source.push(b"\x02" * half)
+    frame = source.read()
+    assert frame == b"\x01" * half + b"\x02" * half
+    source.push(b"\x03" * 10)
+    source.flush()
+    padded = source.read()
+    assert padded[:10] == b"\x03" * 10 and len(padded) == DISCORD_FRAME_BYTES

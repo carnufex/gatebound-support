@@ -830,7 +830,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "discord-ext-voice-recv" },
-    { name = "discord-py", extra = ["voice"] },
+    { name = "discord-py" },
     { name = "elevenlabs" },
     { name = "fastapi" },
     { name = "httpx" },
@@ -857,7 +857,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "discord-ext-voice-recv", specifier = ">=0.5.2a179" },
-    { name = "discord-py", extras = ["voice"], specifier = ">=2.4" },
+    { name = "discord-py", specifier = ">=2.7" },
     { name = "elevenlabs", specifier = ">=2.68.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.27" },

@@ -77,7 +77,7 @@ uv run python elevenlabs/scripts/probe_mcp.py
    private thread and not a forum post), adds the user, redirects them to the thread.
 5. When the conversation ends, ElevenLabs posts the transcript:
    `src/gatebound_support/routes/webhooks.py:elevenlabs_webhook` verifies the HMAC
-   (`elevenlabs.py:verify_signature`), stores it, and if a ticket has that
+   (`elevenlabs.py:verify_webhook_signature`), stores it, and if a ticket has that
    `conversation_id`, posts summary + transcript into the thread.
 
 Fallback with no agent at all: `/ticket/new` (`tickets.py:new_ticket_form`) creates the

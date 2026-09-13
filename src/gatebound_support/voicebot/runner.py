@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 import sys
 
 from ..logging import configure_logging, get_logger
@@ -97,6 +98,8 @@ def run(settings: Settings) -> int:
     install_dave_receive()
     if not dave_available():
         logger.error("davey is not importable; Discord voice requires DAVE (close code 4017)")
+    # voice-recv logs every RTCP sender report at INFO (one line per second per call).
+    logging.getLogger("discord.ext.voice_recv.reader").setLevel(logging.WARNING)
 
     bot = VoiceBot(settings)
     bot.run(settings.DISCORD_BOT_TOKEN, log_handler=None)

@@ -4,8 +4,34 @@ Python/FastAPI backend for Gatebound's ElevenLabs support agent: MCP tools for t
 the Discord ticket flow, the post-call webhook, and the knowledge-base sync CLI.
 
 `docs/SPEC.md` is the contract this service is built against — read it for exact env names,
-endpoint paths, tool shapes, and the ticket flow. This file is just the "how do I run it"
-quick start.
+endpoint paths, tool shapes, and the ticket flow. `docs/ARCHITECTURE.md` has the component
+map, trust boundaries and failure modes; `docs/DECISIONS.md` the reasoning (no database
+access from this stack, MCP instead of webhook tools, ticket links instead of agent-created
+tickets, knowledge base synced from Git, cheapest models while iterating). This file is just
+the "how do I run it" quick start.
+
+Live: agent "Gatebound Support" in the text-first widget on
+[gatebound.rosenvall.se](https://gatebound.rosenvall.se); service at
+`gatebound-support.rosenvall.se`, deployed from the private homelab GitOps repo.
+
+## ElevenLabs agent as code (`elevenlabs/`)
+
+Everything about the agent lives in the ElevenLabs CLI project layout and is pushed, never
+edited in the UI:
+
+```powershell
+$env:ELEVENLABS_API_KEY = "..."
+cd elevenlabs
+python scripts/build_agent_config.py     # prompt + settings -> agent_configs/Gatebound-Support.json
+elevenlabs agents push                   # create/update the agent
+elevenlabs tests push                    # the six behaviour tests in test_configs/
+python scripts/run_agent_tests.py        # run them, table + exit code (add --verbose for transcripts)
+python scripts/sync_agent_refs.py        # mirror live knowledge_base + mcp_server_ids into the config
+$env:MCP_SECRET = "..."; uv run python scripts/probe_mcp.py   # talk to the deployed /mcp like ElevenLabs does
+```
+
+The MCP server entry and its bearer secret are registered once per workspace (see
+`docs/DECISIONS.md`); the agent references it by id in `mcp_server_ids`.
 
 ## Run locally
 

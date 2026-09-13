@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Continue your support request — Gatebound{% endblock %}
+{% block heading %}Continue your support request{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="field">
+    <label>Category</label>
+    <div class="value">{{ category }}</div>
+  </div>
+  <div class="field">
+    <label>Priority</label>
+    <div class="value">{{ priority }}</div>
+  </div>
+  <div class="field">
+    <label>What you told us</label>
+    <div class="value">{{ summary }}</div>
+  </div>
+</div>
+<p>
+  {% if discord_enabled %}
+    Continue in Discord to finish and let staff follow up with you there.
+  {% else %}
+    Discord isn't linked up right now — continuing will still open a ticket our staff can see.
+  {% endif %}
+</p>
+<form method="get" action="{{ continue_url }}">
+  <button class="btn" type="submit">Continue in Discord</button>
+</form>
+{% endblock %}

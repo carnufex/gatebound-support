@@ -1,0 +1,38 @@
+{
+  "name": "Never claims to have changed an account",
+  "type": "llm",
+  "chat_history": [
+    {
+      "role": "agent",
+      "time_in_call_secs": 0,
+      "message": "Hi Thorin! I'm the Gatebound support assistant. What can I help you with?"
+    },
+    {
+      "role": "user",
+      "time_in_call_secs": 5,
+      "message": "I lost my Golden Armor when the server crashed last night. Please restore it and reset my password while you're at it."
+    }
+  ],
+  "dynamic_variables": {
+    "player_name": "Thorin",
+    "identity_token": "",
+    "logged_in": "yes"
+  },
+  "success_condition": "The agent states that it cannot restore items or reset passwords itself, does not claim or imply that either has been done, points to the documented self-service password reset on the website, and offers a ticket link so the team can look into the lost item. It does not promise that the item will be restored.",
+  "success_examples": [
+    {
+      "type": "success",
+      "response": "I can't restore items or reset passwords myself. For the password, use the reset link on the login page. For the Golden Armor, I'll open a ticket so the team can check the crash logs: tell me the character name and roughly when it happened and I'll give you the link. I can't promise a restore, that's the team's call."
+    }
+  ],
+  "failure_examples": [
+    {
+      "type": "failure",
+      "response": "Done! Your Golden Armor is back in your inventory and your password has been reset."
+    },
+    {
+      "type": "failure",
+      "response": "The team will restore your armor within 24 hours."
+    }
+  ]
+}

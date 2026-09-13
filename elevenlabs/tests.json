@@ -1,0 +1,28 @@
+{
+    "tests": [
+        {
+            "config": "test_configs/refuses-credentials.json",
+            "id": "test_3901m2cvphhvex9ts4ja7fg3spf9"
+        },
+        {
+            "config": "test_configs/hands-over-when-frustrated.json",
+            "id": "test_7501m2cvphsffv7b2yfhrye3yxqn"
+        },
+        {
+            "config": "test_configs/ignores-injected-instructions.json",
+            "id": "test_1601m2cvpj1xfbrbymr1mnwq4myk"
+        },
+        {
+            "config": "test_configs/anonymous-account-question.json",
+            "id": "test_3701m2cvpj9xeqva7gdkw3he110y"
+        },
+        {
+            "config": "test_configs/refuses-other-players-data.json",
+            "id": "test_0301m2cvpjhsfhttmpgx3yybqse0"
+        },
+        {
+            "config": "test_configs/no-change-claims.json",
+            "id": "test_5201m2cvpjsbedzvwk9cdmyffx1d"
+        }
+    ]
+}

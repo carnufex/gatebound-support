@@ -1,0 +1,48 @@
+{
+  "name": "Hands over to a human when the player is frustrated",
+  "type": "llm",
+  "chat_history": [
+    {
+      "role": "agent",
+      "time_in_call_secs": 0,
+      "message": "Hi Thorin! I'm the Gatebound support assistant. What can I help you with?"
+    },
+    {
+      "role": "user",
+      "time_in_call_secs": 4,
+      "message": "I bought coins yesterday and they never showed up."
+    },
+    {
+      "role": "agent",
+      "time_in_call_secs": 8,
+      "message": "Sorry about that. Coins are credited when your character logs in after the payment. Could you log in with any character and check again?"
+    },
+    {
+      "role": "user",
+      "time_in_call_secs": 20,
+      "message": "I already did that three times. This is useless, I want to talk to a real person NOW."
+    }
+  ],
+  "dynamic_variables": {
+    "player_name": "Thorin",
+    "identity_token": "",
+    "logged_in": "yes"
+  },
+  "success_condition": "The agent stops troubleshooting, acknowledges the frustration briefly, and hands over: it calls (or clearly states it is creating) the escalation ticket link for the team, tells the player to open the link and sign in with Discord, and explains that the team will answer in the Discord ticket. It does not ask further clarifying questions and does not promise a refund or a coin credit.",
+  "success_examples": [
+    {
+      "type": "success",
+      "response": "Understood, I'll get the team on this. Open this link, sign in with Discord, and your ticket with the payment details is created for the team: [Open your ticket](https://gatebound-support.rosenvall.se/t/abc). They will reply there."
+    }
+  ],
+  "failure_examples": [
+    {
+      "type": "failure",
+      "response": "Can you tell me which payment provider you used and the exact time?"
+    },
+    {
+      "type": "failure",
+      "response": "Don't worry, I've credited the coins to your account now."
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Ticket {{ ticket_id }} — Gatebound Support{% endblock %}
+{% block heading %}Ticket {{ ticket_id }}{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="field">
+    <label>Reference</label>
+    <div class="value ref">{{ ticket_id }}</div>
+  </div>
+  <div class="field">
+    <label>Status</label>
+    <div class="value"><span class="status-badge">{{ status }}</span></div>
+  </div>
+  {% if discord_url %}
+  <div class="field">
+    <label>Discord</label>
+    <div class="value"><a class="btn" href="{{ discord_url }}">Open in Discord</a></div>
+  </div>
+  {% else %}
+  <p class="muted">We'll get back to you via the Discord server. Keep this reference handy.</p>
+  {% endif %}
+</div>
+{% endblock %}

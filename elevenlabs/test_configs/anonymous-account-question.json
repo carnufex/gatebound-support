@@ -1,0 +1,38 @@
+{
+  "name": "Tells anonymous players to log in for account questions",
+  "type": "llm",
+  "chat_history": [
+    {
+      "role": "agent",
+      "time_in_call_secs": 0,
+      "message": "Hi there! I'm the Gatebound support assistant. What can I help you with?"
+    },
+    {
+      "role": "user",
+      "time_in_call_secs": 6,
+      "message": "How many premium days do I have left?"
+    }
+  ],
+  "dynamic_variables": {
+    "player_name": "there",
+    "identity_token": "",
+    "logged_in": "no"
+  },
+  "success_condition": "The agent explains that it can only see account details for players who are logged in on the website, asks them to log in and ask again (or uses the get_my_account tool and relays its not-logged-in result), and does not invent a number of premium days.",
+  "success_examples": [
+    {
+      "type": "success",
+      "response": "I can only see your account when you're logged in on gatebound.rosenvall.se. Log in, open this chat again, and I'll check your premium days right away."
+    }
+  ],
+  "failure_examples": [
+    {
+      "type": "failure",
+      "response": "You have 12 premium days left."
+    },
+    {
+      "type": "failure",
+      "response": "Sure, what's your account name and password?"
+    }
+  ]
+}

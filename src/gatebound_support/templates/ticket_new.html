@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}New support request — Gatebound{% endblock %}
+{% block heading %}Start a support request{% endblock %}
+{% block content %}
+{% if error %}
+<div class="card"><p style="color: var(--danger)">{{ error }}</p></div>
+{% endif %}
+<form method="post" action="/ticket/new">
+  <div class="card">
+    <div class="field">
+      <label for="category">Category</label>
+      <select id="category" name="category" required>
+        <option value="account" {% if category == "account" %}selected{% endif %}>Account</option>
+        <option value="bug" {% if category == "bug" %}selected{% endif %}>Bug</option>
+        <option value="payment" {% if category == "payment" %}selected{% endif %}>Payment</option>
+        <option value="report_player" {% if category == "report_player" %}selected{% endif %}>Report a player</option>
+        <option value="other" {% if category == "other" or not category %}selected{% endif %}>Other</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="character_name">Character name (optional)</label>
+      <input id="character_name" type="text" name="character_name" value="{{ character_name or '' }}">
+    </div>
+    <div class="field">
+      <label for="summary">What do you need help with?</label>
+      <textarea id="summary" name="summary" required>{{ summary or '' }}</textarea>
+    </div>
+  </div>
+  <button class="btn" type="submit">Create ticket</button>
+</form>
+{% endblock %}

@@ -70,18 +70,29 @@ Requires `ELEVENLABS_API_KEY`.
 command, own Kubernetes Deployment — same image, `command: ["gatebound-support",
 "voicebot"]`, no HTTP service) that runs the Discord gateway connection and bridges voice:
 
-- **`/support` or `/call`** (run in a voice channel): the bot "Gatebound Support" joins the
-  player's current voice channel and bridges audio both ways to the ElevenLabs
-  Conversational AI agent — the same agent the website widget talks to, over the SDK's
-  `Conversation` + a custom `AudioInterface` (see `src/gatebound_support/voicebot/`). A
-  ticket + private Discord thread is opened for the call up front (source
-  `discord_voice`), and the post-call transcript webhook posts the summary and transcript
-  to that thread when the call ends, exactly like the website ticket flow.
+- **`/support` or `/call`** (from anywhere — the player does *not* need to already be in a
+  voice channel): the bot creates a **private temporary voice channel** (`support-<display
+  name>`, in the same category as the support text channel if it has one) that only the
+  player, the bot, and roles with Administrator/Manage Guild can see or join — a support
+  call must never be overhearable or joinable by other guild members. The player gets an
+  ephemeral reply with a link to the channel ("join it and I'll pick up"); if they're
+  already in a voice channel and the bot has Move Members, it pulls them straight in
+  instead. A ticket + private Discord thread is opened for the call up front (source
+  `discord_voice`). The ElevenLabs Conversational AI session — the same agent the website
+  widget talks to, over the SDK's `Conversation` + a custom `AudioInterface` (see
+  `src/gatebound_support/voicebot/`) — only starts once the player actually joins that
+  channel; if nobody joins within 2 minutes the channel is deleted and "Call not started"
+  is posted to the ticket thread. The post-call transcript webhook posts the summary and
+  transcript to the thread when a real call ends, exactly like the website ticket flow.
 - **`/hangup`**: ends the current call early.
-- The call also ends when the player leaves the voice channel, the agent says goodbye
-  (its own `end_call` tool), or after `VOICE_MAX_MINUTES` (default 15).
-- One call per Discord server at a time — a second `/support` while busy gets an ephemeral
-  "the line is busy" reply.
+- The call also ends when the player leaves the private channel, the agent says goodbye
+  (its own `end_call` tool), or after `VOICE_MAX_MINUTES` (default 15) — in every case the
+  temporary voice channel is deleted and "Call ended (`<duration>`)" is posted to the
+  ticket thread. On startup the bot also sweeps for and deletes any leftover empty
+  `support-*` channels from a previous crash/restart.
+- One call per Discord server at a time, from the moment `/support` reserves the guild's
+  slot (channel creation, waiting for join, and the call itself) — a second `/support`
+  while busy gets an ephemeral "the line is busy" reply.
 - **`/ticket`**, and a persistent **"Open a ticket"** button pinned in the support channel,
   open a text ticket via a modal (category + description) without going through the
   ElevenLabs agent at all — same private-thread flow, source `discord_text`. One open
@@ -93,8 +104,12 @@ process from the one holding SQLite.
 
 **Discord bot permissions needed** (added when inviting/authorizing the bot, or updating its
 existing OAuth2 scopes): `View Channel`, `Send Messages`, `Create Private Threads`, `Send
-Messages in Threads`, `Manage Threads` (already required for the text ticket flow) plus
-**`Connect`**, **`Speak`**, and **`Use Voice Activity`** for voice.
+Messages in Threads`, `Manage Threads` (already required for the text ticket flow); plus, for
+voice, **`Connect`**, **`Speak`**, **`Use Voice Activity`**, and — **permanent, not optional**
+— **`Manage Channels`** and **`Manage Roles`** (needed to create the private per-call voice
+channel and set its permission overwrites every time `/support` runs). **`Move Members`** is
+optional: when granted, a player already in a voice channel is pulled straight into their
+private call channel instead of having to click the link themselves.
 
 **Cost note:** ElevenLabs bills voice conversation minutes at a materially higher rate than
 text conversations — a `/support` call is not "free" the way a widget chat message is.

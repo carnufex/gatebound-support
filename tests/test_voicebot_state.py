@@ -53,3 +53,19 @@ def test_active_user_id_none_when_idle() -> None:
     registry = CallRegistry()
     assert registry.active_user_id(42) is None
     assert registry.active_call(42) is None
+
+
+def test_set_channel_id_fills_in_channel_created_after_reservation() -> None:
+    registry = CallRegistry()
+    registry.try_start(1, channel_id=0, user_id=200)  # channel doesn't exist yet
+    registry.set_channel_id(1, 555)
+    call = registry.active_call(1)
+    assert call is not None
+    assert call.channel_id == 555
+    assert call.user_id == 200  # untouched
+
+
+def test_set_channel_id_on_idle_guild_is_a_noop() -> None:
+    registry = CallRegistry()
+    registry.set_channel_id(999, 555)  # must not raise
+    assert registry.active_call(999) is None

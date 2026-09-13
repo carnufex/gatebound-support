@@ -47,6 +47,10 @@ class PatchTicketBody(BaseModel):
     conversation_id: str | None = None
 
 
+class CloseTicketBody(BaseModel):
+    closed_by: str
+
+
 def _check_auth(settings: Settings, authorization: str | None) -> None:
     expected = f"Bearer {settings.MCP_SECRET}"
     provided = authorization or ""
@@ -115,9 +119,45 @@ def build_router(settings: Settings) -> APIRouter:
         discord_user_id: str, authorization: str | None = Header(default=None)
     ) -> dict[str, str]:
         _check_auth(settings, authorization)
+        # get_open_ticket_for_user filters status = 'open', so a closed ticket never blocks
+        # the user from opening a new one.
         ticket = store.get_open_ticket_for_user(settings.DATA_DIR, discord_user_id)
         if ticket is None or not ticket.get("discord_thread_id"):
             raise HTTPException(status_code=404, detail="not_found")
         return {"ticket_id": ticket["ticket_id"], "thread_id": ticket["discord_thread_id"]}
+
+    @router.get("/tickets/by-thread/{thread_id}")
+    async def get_ticket_by_thread(
+        thread_id: str, authorization: str | None = Header(default=None)
+    ) -> dict[str, str]:
+        _check_auth(settings, authorization)
+        ticket = store.get_ticket_by_thread(settings.DATA_DIR, thread_id)
+        if ticket is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        return {
+            "ticket_id": ticket["ticket_id"],
+            "status": ticket["status"],
+            "discord_user_id": ticket.get("discord_user_id") or "",
+        }
+
+    @router.post("/tickets/{ticket_id}/close")
+    async def close_ticket(
+        ticket_id: str, body: CloseTicketBody, authorization: str | None = Header(default=None)
+    ) -> dict[str, str]:
+        _check_auth(settings, authorization)
+        ticket = store.get_ticket(settings.DATA_DIR, ticket_id)
+        if ticket is None:
+            raise HTTPException(status_code=404, detail="not_found")
+        if ticket["status"] == "closed":
+            raise HTTPException(status_code=409, detail="already_closed")
+        store.close_ticket(settings.DATA_DIR, ticket_id, closed_by=body.closed_by)
+        logger.info(
+            "internal ticket closed", extra={"fields": {"ticket_id": ticket_id, "closed_by": body.closed_by}}
+        )
+        return {
+            "ticket_id": ticket_id,
+            "status": "closed",
+            "thread_id": ticket.get("discord_thread_id") or "",
+        }
 
     return router

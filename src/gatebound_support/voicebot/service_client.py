@@ -110,3 +110,37 @@ class SupportServiceClient:
         if response.status_code != 200:
             return None
         return response.json()
+
+    async def get_ticket_by_thread(self, thread_id: str) -> dict[str, Any] | None:
+        """Resolves a Discord thread id to its ticket — used by ``/close``, the persistent
+        close button, and close-by-reaction, none of which know the ticket id up front."""
+        try:
+            response = await self._client.get(
+                f"/internal/tickets/by-thread/{thread_id}", headers=self._headers()
+            )
+        except httpx.RequestError:
+            logger.warning("internal get_ticket_by_thread request failed")
+            return None
+        if response.status_code != 200:
+            return None
+        return response.json()
+
+    async def close_ticket(self, ticket_id: str, *, closed_by: str) -> dict[str, Any] | None:
+        """Returns the close response body, or ``None`` on any failure — network error, the
+        ticket not existing (404), or it being already closed (409). Callers treat all three
+        the same way: closing didn't happen, report that back rather than touch the thread."""
+        try:
+            response = await self._client.post(
+                f"/internal/tickets/{ticket_id}/close",
+                headers=self._headers(),
+                json={"closed_by": closed_by},
+            )
+        except httpx.RequestError:
+            logger.warning("internal close_ticket request failed")
+            return None
+        if response.status_code != 200:
+            logger.warning(
+                "internal close_ticket rejected", extra={"fields": {"status": response.status_code}}
+            )
+            return None
+        return response.json()

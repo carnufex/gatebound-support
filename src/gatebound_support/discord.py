@@ -111,7 +111,9 @@ class DiscordClient:
 
     # ---- Ticket threads ----
 
-    async def create_ticket_thread(self, *, ticket_id: str, title: str, content: str) -> str | None:
+    async def create_ticket_thread(
+        self, *, ticket_id: str, title: str, content: str, components: list[dict[str, Any]] | None = None
+    ) -> str | None:
         """Creates a PRIVATE thread (type 12) for a ticket in the support text channel and
         posts the opening message. Returns the thread id, or None on failure.
 
@@ -120,6 +122,14 @@ class DiscordClient:
         (read-only), each player sees just their own thread, and staff with Manage Threads
         see all of them. Forum posts cannot be private, and a member of a thread still
         needs to be able to view the parent channel.
+
+        ``components`` (e.g. the voicebot's persistent "Close ticket" button — see
+        ``voicebot/tickets.py::close_ticket_button_components``) is optional and defaults to
+        None: this class is shared by the FastAPI service's own OAuth ticket flow
+        (routes/tickets.py), which never passes it, so that opening post is unaffected.
+        Message components dispatch to whichever bot application registered a persistent
+        view for the custom_id, regardless of whether this REST call or the bot's own
+        gateway connection created the message.
         """
         if not self.enabled:
             return None
@@ -146,7 +156,7 @@ class DiscordClient:
             return None
         thread_id = response.json().get("id")
         if thread_id:
-            await self.post_message(thread_id=thread_id, content=content)
+            await self.post_message(thread_id=thread_id, content=content, components=components)
         return thread_id
 
     async def add_thread_member(self, *, thread_id: str, user_id: str) -> None:
@@ -160,14 +170,19 @@ class DiscordClient:
         except httpx.RequestError:
             logger.warning("discord add thread member failed", extra={"fields": {"thread_id": thread_id}})
 
-    async def post_message(self, *, thread_id: str, content: str) -> None:
+    async def post_message(
+        self, *, thread_id: str, content: str, components: list[dict[str, Any]] | None = None
+    ) -> None:
         if not self.enabled or not content:
             return
+        body: dict[str, Any] = {"content": content}
+        if components:
+            body["components"] = components
         try:
             await self._client.post(
                 f"{API_BASE}/channels/{thread_id}/messages",
                 headers=self._bot_headers(),
-                json={"content": content},
+                json=body,
             )
         except httpx.RequestError:
             logger.warning("discord post message failed", extra={"fields": {"thread_id": thread_id}})

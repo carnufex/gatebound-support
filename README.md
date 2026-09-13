@@ -97,19 +97,43 @@ command, own Kubernetes Deployment — same image, `command: ["gatebound-support
   open a text ticket via a modal (category + description) without going through the
   ElevenLabs agent at all — same private-thread flow, source `discord_text`. One open
   ticket per Discord user at a time; opening a second one just links back to the first.
+- **`/close`**, a persistent **"Close ticket"** button on every ticket's opening post and on
+  the voice call's "Call ended" message, and reacting with ✅ or 🔒 to any bot-authored
+  message inside a ticket thread, all close the ticket the same way: only the ticket's own
+  Discord user or a member with Manage Threads on the parent channel may do it (everyone
+  else gets an ephemeral refusal, or — for a reaction, which has no ephemeral channel — a
+  short message posted in the thread). Closing calls the internal API (status → `closed`),
+  ends an active voice call for that ticket first if there is one, posts "Ticket closed by
+  `<mention>`.", renames the thread to `[closed] <old name>`, and archives + locks it. A
+  closed ticket never blocks its owner from opening a new one.
+- **Reaction shortcuts** on the pinned instructions message (an alternative to typing
+  slash commands): react, and the bot removes your reaction once it's acted on it.
+
+  | Reaction | Action |
+  |---|---|
+  | 🎫 | Same as `/ticket`, but without a modal (reactions can't open one): category `other`, summary "Opened by reaction; the player describes the problem in the thread" — the player is asked to describe the problem in the thread itself. Already has an open ticket → a reminder is posted there instead of opening a new one. |
+  | 📞 | Same as `/support`: creates the private voice channel, ticket and thread, and waits for the join — since there's no ephemeral reply for a reaction, the "join `<channel>` and I'll pick up" text is posted as the thread's first message instead. |
+
+  A per-user in-flight guard ignores a reaction that arrives while that user's previous
+  ticket-creation/call-start reaction is still being handled, so double-tapping doesn't
+  double-fire.
 
 The bot talks to this same service's `/internal` API (bearer `MCP_SECRET`, not part of the
-public contract in `docs/SPEC.md`) to create and update tickets, since it's a separate
-process from the one holding SQLite.
+public contract in `docs/SPEC.md`) to create, update, and close tickets, since it's a
+separate process from the one holding SQLite.
 
 **Discord bot permissions needed** (added when inviting/authorizing the bot, or updating its
 existing OAuth2 scopes): `View Channel`, `Send Messages`, `Create Private Threads`, `Send
-Messages in Threads`, `Manage Threads` (already required for the text ticket flow); plus, for
-voice, **`Connect`**, **`Speak`**, **`Use Voice Activity`**, and — **permanent, not optional**
-— **`Manage Channels`** and **`Manage Roles`** (needed to create the private per-call voice
-channel and set its permission overwrites every time `/support` runs). **`Move Members`** is
-optional: when granted, a player already in a voice channel is pulled straight into their
-private call channel instead of having to click the link themselves.
+Messages in Threads`, `Manage Threads` (needed for the text ticket flow *and* to let
+Manage-Threads staff close any ticket, not just their own); plus, for voice, **`Connect`**,
+**`Speak`**, **`Use Voice Activity`**, and — **permanent, not optional** — **`Manage
+Channels`** and **`Manage Roles`** (needed to create the private per-call voice channel and
+set its permission overwrites every time `/support` runs). **`Move Members`** is optional:
+when granted, a player already in a voice channel is pulled straight into their private call
+channel instead of having to click the link themselves. The reaction shortcuts additionally
+want **`Manage Messages`** so the bot can remove a player's reaction from the pinned message
+after acting on it — without it the reaction still triggers the action, it just isn't
+auto-removed (a `Forbidden` from the removal attempt is caught and ignored).
 
 **Cost note:** ElevenLabs bills voice conversation minutes at a materially higher rate than
 text conversations — a `/support` call is not "free" the way a widget chat message is.

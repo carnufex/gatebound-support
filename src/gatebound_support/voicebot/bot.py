@@ -1,9 +1,12 @@
-"""The Discord gateway bot: voice calls (/support, /call, /hangup) and text tickets
-(/ticket, persistent "Open a ticket" button).
+"""The Discord gateway bot: voice calls (/support, /call, /hangup), text tickets (/ticket,
+persistent "Open a ticket" button), closing tickets (/close, persistent "Close ticket"
+button, closing-emoji reaction), and the emoji-reaction shortcuts on the pinned instructions
+message (🎫 open a ticket, 📞 start a call).
 
-Intents: guilds + voice_states only — no message content, per SPEC-style convention for this
-service (see settings.py). Slash commands are registered per-guild (``DISCORD_GUILD_ID``) so
-they appear instantly instead of waiting for Discord's up-to-an-hour global command cache.
+Intents: guilds + voice_states + guild_reactions only — no message content, per SPEC-style
+convention for this service (see settings.py); GUILD_MESSAGE_REACTIONS is not a privileged
+intent. Slash commands are registered per-guild (``DISCORD_GUILD_ID``) so they appear
+instantly instead of waiting for Discord's up-to-an-hour global command cache.
 
 Voice calls run in a private, per-call voice channel (SPEC change: a support call cannot be
 overheard or joined by other guild members) rather than the bot joining whatever channel the
@@ -37,19 +40,27 @@ from .channels import (
 )
 from .elevenlabs_bridge import CallSession
 from .opus_support import ensure_opus_loaded
+from .reactions import (
+    OPEN_TICKET_EMOJI,
+    PRIMARY_CLOSE_EMOJI,
+    START_CALL_EMOJI,
+    InstructionsReactionAction,
+    instructions_message_action,
+    is_close_reaction,
+)
 from .service_client import SupportServiceClient
 from .sink import SinglePlayerSink
 from .state import JOIN_TIMEOUT_SECONDS, CallRegistry, PendingCall
-from .tickets import map_category
+from .tickets import can_close_ticket, close_ticket_button_components, map_category
 
 logger = get_logger("gatebound_support.voicebot")
 
 PINNED_MESSAGE_PREFIX = "**Support tickets**"
 PINNED_MESSAGE_BODY = (
-    f"{PINNED_MESSAGE_PREFIX}\nNeed help? Click the button below to open a private ticket "
-    "with staff, or run /support to start a private voice call with the support agent "
-    "(a private voice channel is created just for you)."
+    f"{PINNED_MESSAGE_PREFIX}\nReact with {OPEN_TICKET_EMOJI} to open a ticket, {START_CALL_EMOJI} "
+    "to start a private voice call, or use the button/commands below."
 )
+VOICE_CALL_OPENING_FOOTER = "Live voice call in progress; the transcript is posted here when the call ends."
 
 
 @dataclasses.dataclass
@@ -106,33 +117,13 @@ class TicketModal(discord.ui.Modal, title="Open a support ticket"):
         category = map_category(self.category_field.component.value)
         summary = self.description_field.component.value.strip()[:1000] or "(no description given)"
         member = interaction.user
-        bot = self._bot
 
-        ticket_id = await bot.service_client.create_ticket(
-            source="discord_text",
-            discord_user_id=str(member.id),
-            discord_username=str(member),
-            category=category,
-            summary=summary,
-        )
+        ticket_id, thread_id = await self._bot.create_text_ticket(member, category=category, summary=summary)
         if not ticket_id:
             await interaction.followup.send(
                 "Something went wrong creating your ticket. Please try again in a moment.", ephemeral=True
             )
             return
-
-        content = opening_post(
-            ticket_id=ticket_id,
-            category=category,
-            priority="normal",
-            summary=summary,
-            account_name=str(member),
-            conversation_id=None,
-            discord_user_id=str(member.id),
-        )
-        thread_id = await bot.discord_client.create_ticket_thread(
-            ticket_id=ticket_id, title=f"#{ticket_id} {summary[:80]}", content=content
-        )
         if not thread_id:
             await interaction.followup.send(
                 f"Ticket {ticket_id} was created, but I couldn't open a Discord thread. "
@@ -140,13 +131,6 @@ class TicketModal(discord.ui.Modal, title="Open a support ticket"):
                 ephemeral=True,
             )
             return
-        await bot.discord_client.add_thread_member(thread_id=thread_id, user_id=str(member.id))
-        await bot.service_client.patch_ticket(
-            ticket_id,
-            thread_id=thread_id,
-            guild_id=str(interaction.guild_id) if interaction.guild_id else "",
-            discord_user_id=str(member.id),
-        )
         url = f"https://discord.com/channels/{interaction.guild_id}/{thread_id}"
         await interaction.followup.send(f"Ticket opened: {url}", ephemeral=True)
 
@@ -166,11 +150,28 @@ class TicketButtonView(discord.ui.View):
         await self._bot.offer_ticket_modal(interaction)
 
 
+class CloseTicketView(discord.ui.View):
+    """Persistent view for the "Close ticket" button attached (via raw REST, see
+    ``tickets.close_ticket_button_components``) to every new ticket's opening post and to
+    the voice call's "Call ended" message. Persistent-view dispatch matches purely on
+    (component_type, custom_id) — see ``discord/ui/view.py::ViewStore.dispatch_view`` — so
+    this works on messages this bot process never itself sent via the gateway."""
+
+    def __init__(self, bot: VoiceBot) -> None:
+        super().__init__(timeout=None)
+        self._bot = bot
+
+    @discord.ui.button(label="Close ticket", style=discord.ButtonStyle.danger, custom_id="gb_close_ticket")
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await self._bot.handle_close(interaction)
+
+
 class VoiceBot(discord.Client):
     def __init__(self, settings: Settings) -> None:
         intents = discord.Intents.none()
         intents.guilds = True
         intents.voice_states = True
+        intents.guild_reactions = True
         super().__init__(intents=intents)
         self.settings = settings
         self.tree = app_commands.CommandTree(self)
@@ -180,6 +181,12 @@ class VoiceBot(discord.Client):
         self._guild_id = int(settings.DISCORD_GUILD_ID)
         self._support_channel_id = int(settings.DISCORD_SUPPORT_CHANNEL_ID)
         self._active_calls: dict[int, VoiceCallState] = {}
+        self._instructions_message_id: int | None = None
+        # Debounce: a reaction-triggered action for a user already in flight is ignored
+        # rather than double-fired (coordinator: "a simple per-user asyncio.Lock or set").
+        # Safe as a plain set with no lock: nothing awaits between the membership check and
+        # the add in _try_lock_reaction_user, so no other task can interleave on this loop.
+        self._reaction_busy: set[int] = set()
 
     # ---- lifecycle ----
 
@@ -207,7 +214,12 @@ class VoiceBot(discord.Client):
         async def ticket_command(interaction: discord.Interaction) -> None:
             await self.offer_ticket_modal(interaction)
 
+        @self.tree.command(name="close", description="Close this Gatebound support ticket", guild=guild)
+        async def close_command(interaction: discord.Interaction) -> None:
+            await self.handle_close(interaction)
+
         self.add_view(TicketButtonView(self))
+        self.add_view(CloseTicketView(self))
         await self.tree.sync(guild=guild)
         logger.info("slash commands synced", extra={"fields": {"guild_id": self._guild_id}})
 
@@ -232,11 +244,20 @@ class VoiceBot(discord.Client):
             self._support_channel_id
         )
         view = TicketButtonView(self)
-        async for message in channel.history(limit=50):
-            if message.author.id == self.user.id and message.content.startswith(PINNED_MESSAGE_PREFIX):
-                await message.edit(content=PINNED_MESSAGE_BODY, view=view)
-                return
-        await channel.send(PINNED_MESSAGE_BODY, view=view)
+        message = None
+        async for candidate in channel.history(limit=50):
+            if candidate.author.id == self.user.id and candidate.content.startswith(PINNED_MESSAGE_PREFIX):
+                await candidate.edit(content=PINNED_MESSAGE_BODY, view=view)
+                message = candidate
+                break
+        if message is None:
+            message = await channel.send(PINNED_MESSAGE_BODY, view=view)
+        self._instructions_message_id = message.id
+        for emoji in (OPEN_TICKET_EMOJI, START_CALL_EMOJI):
+            try:
+                await message.add_reaction(emoji)
+            except discord.DiscordException:
+                logger.exception("failed to add instructions reaction", extra={"fields": {"emoji": emoji}})
 
     async def _cleanup_stale_support_channels(self) -> None:
         """Deletes leftover ``support-*`` voice channels from a previous run (crash/restart
@@ -266,6 +287,100 @@ class VoiceBot(discord.Client):
                     "failed to delete stale support channel", extra={"fields": {"channel_id": channel.id}}
                 )
 
+    # ---- reaction debounce ----
+
+    def _try_lock_reaction_user(self, user_id: int) -> bool:
+        if user_id in self._reaction_busy:
+            return False
+        self._reaction_busy.add(user_id)
+        return True
+
+    def _unlock_reaction_user(self, user_id: int) -> None:
+        self._reaction_busy.discard(user_id)
+
+    # ---- reactions ----
+
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent) -> None:
+        if payload.guild_id is None:
+            return
+        if self.user is not None and payload.user_id == self.user.id:
+            return
+        if payload.member is not None and payload.member.bot:
+            return
+        emoji = str(payload.emoji)
+
+        if self._instructions_message_id is not None and payload.message_id == self._instructions_message_id:
+            await self._handle_instructions_reaction(payload, emoji)
+            return
+
+        if is_close_reaction(emoji):
+            await self._handle_close_reaction(payload)
+
+    async def _handle_instructions_reaction(
+        self, payload: discord.RawReactionActionEvent, emoji: str
+    ) -> None:
+        action = instructions_message_action(emoji)
+        if action is None:
+            return
+        guild = self.get_guild(payload.guild_id)
+        if guild is None:
+            return
+        member = payload.member or guild.get_member(payload.user_id)
+        if member is None:
+            return
+
+        if self._try_lock_reaction_user(member.id):
+            try:
+                if action is InstructionsReactionAction.OPEN_TICKET:
+                    await self._open_ticket_via_reaction(member)
+                else:
+                    await self._start_call_via_reaction(guild, member)
+            finally:
+                self._unlock_reaction_user(member.id)
+
+        await self._remove_instructions_reaction(guild, payload, member)
+
+    async def _remove_instructions_reaction(
+        self, guild: discord.Guild, payload: discord.RawReactionActionEvent, member: discord.Member
+    ) -> None:
+        """Keeps the pinned message clean so it's always ready to be reacted to again."""
+        channel = guild.get_channel(payload.channel_id)
+        if not isinstance(channel, discord.TextChannel):
+            return
+        try:
+            message = await channel.fetch_message(payload.message_id)
+            await message.remove_reaction(payload.emoji, member)
+        except discord.Forbidden:
+            logger.warning("cannot remove instructions reaction: missing Manage Messages")
+        except discord.DiscordException:
+            logger.exception("failed to remove instructions reaction")
+
+    async def _handle_close_reaction(self, payload: discord.RawReactionActionEvent) -> None:
+        if self.user is None or payload.message_author_id != self.user.id:
+            return
+        guild = self.get_guild(payload.guild_id) if payload.guild_id else None
+        if guild is None:
+            return
+        channel = guild.get_channel_or_thread(payload.channel_id)
+        if not isinstance(channel, discord.Thread):
+            return
+        member = payload.member or guild.get_member(payload.user_id)
+        if member is None:
+            return
+
+        ticket = await self.service_client.get_ticket_by_thread(str(channel.id))
+        if ticket is None:
+            return
+
+        if not self._try_lock_reaction_user(member.id):
+            return
+        try:
+            ok, message = await self._perform_close(member=member, thread=channel, ticket=ticket)
+            if not ok:
+                await channel.send(message)
+        finally:
+            self._unlock_reaction_user(member.id)
+
     # ---- text tickets ----
 
     async def offer_ticket_modal(self, interaction: discord.Interaction) -> None:
@@ -277,6 +392,39 @@ class VoiceBot(discord.Client):
             )
             return
         await interaction.response.send_modal(TicketModal(self))
+
+    async def create_text_ticket(
+        self, member: discord.Member, *, category: str, summary: str
+    ) -> tuple[str | None, str | None]:
+        """Shared by the modal (``/ticket``, the button) and the 🎫 reaction shortcut."""
+        ticket_id = await self.service_client.create_ticket(
+            source="discord_text",
+            discord_user_id=str(member.id),
+            discord_username=str(member),
+            category=category,
+            summary=summary,
+        )
+        if not ticket_id:
+            return None, None
+        thread_id = await self._create_ticket_thread(
+            ticket_id=ticket_id, category=category, summary=summary, member=member
+        )
+        return ticket_id, thread_id
+
+    async def _open_ticket_via_reaction(self, member: discord.Member) -> None:
+        existing = await self.service_client.get_open_ticket(str(member.id))
+        if existing and existing.get("thread_id"):
+            await self.discord_client.post_message(
+                thread_id=existing["thread_id"], content=f"{member.mention} you already have an open ticket here."
+            )
+            return
+        category = "other"
+        summary = "Opened by reaction; the player describes the problem in the thread"
+        ticket_id, thread_id = await self.create_text_ticket(member, category=category, summary=summary)
+        if ticket_id and thread_id:
+            await self.discord_client.post_message(
+                thread_id=thread_id, content="Tell us what is going on and a staff member will answer here."
+            )
 
     # ---- voice calls ----
 
@@ -298,50 +446,28 @@ class VoiceBot(discord.Client):
             return
 
         await interaction.response.defer(ephemeral=True, thinking=True)
-        try:
-            channel = await self._create_private_voice_channel(guild, member)
-        except Exception:
-            logger.exception("failed to create private voice channel")
-            self.calls.end(guild.id)
+        channel = await self._begin_voice_call(guild, member)
+        if channel is None:
             await interaction.followup.send(
                 "Something went wrong starting the call. Please try again.", ephemeral=True
             )
             return
-        self.calls.set_channel_id(guild.id, channel.id)
+        await interaction.followup.send(f"{channel.mention} — join it and I'll pick up.", ephemeral=True)
 
-        ticket_id, thread_id = await self._open_voice_ticket(member)
-
-        call_state = VoiceCallState(
-            pending=PendingCall(
-                guild_id=guild.id, user_id=member.id, channel_id=channel.id, created_at=time.monotonic()
-            ),
-            ticket_id=ticket_id,
-            thread_id=thread_id,
-        )
-        call_state.join_timeout_task = asyncio.create_task(self._join_timeout(guild.id))
-        self._active_calls[guild.id] = call_state
-
-        # Best-effort convenience: if the player is already in a voice channel and the bot
-        # has Move Members, pull them straight in instead of making them click the link.
-        voice_state = member.voice
-        if (
-            voice_state is not None
-            and voice_state.channel is not None
-            and guild.me is not None
-            and guild.me.guild_permissions.move_members
-        ):
-            try:
-                await member.move_to(channel, reason="Gatebound support call")
-            except discord.DiscordException:
-                logger.exception("failed to move member into private support channel")
-
-        logger.info(
-            "voice channel created",
-            extra={"fields": {"guild_id": guild.id, "channel_id": channel.id, "ticket_id": ticket_id}},
-        )
-        await interaction.followup.send(
-            f"{channel.mention} — join it and I'll pick up.", ephemeral=True
-        )
+    async def _start_call_via_reaction(self, guild: discord.Guild, member: discord.Member) -> None:
+        if not enabled(self.settings.ELEVENLABS_API_KEY) or not enabled(self.settings.ELEVENLABS_AGENT_ID):
+            return
+        if not self.calls.try_start(guild.id, channel_id=0, user_id=member.id):
+            return  # busy; no ephemeral channel to reply on for a reaction, so stay quiet
+        channel = await self._begin_voice_call(guild, member)
+        if channel is None:
+            return
+        call_state = self._active_calls.get(guild.id)
+        if call_state is not None and call_state.thread_id:
+            await self.discord_client.post_message(
+                thread_id=call_state.thread_id,
+                content=f"{member.mention} join {channel.mention} and I'll pick up.",
+            )
 
     async def handle_hangup(self, interaction: discord.Interaction) -> None:
         guild = interaction.guild
@@ -368,7 +494,112 @@ class VoiceBot(discord.Client):
         if after.channel is None or after.channel.id != call_state.channel_id:
             await self._end_call(member.guild.id, reason="player_left")
 
+    # ---- close ----
+
+    async def handle_close(self, interaction: discord.Interaction) -> None:
+        channel = interaction.channel
+        if not isinstance(channel, discord.Thread):
+            await interaction.response.send_message("Run this inside a ticket thread.", ephemeral=True)
+            return
+        ticket = await self.service_client.get_ticket_by_thread(str(channel.id))
+        if ticket is None:
+            await interaction.response.send_message("I can't find a ticket for this thread.", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        _ok, message = await self._perform_close(member=interaction.user, thread=channel, ticket=ticket)
+        await interaction.followup.send(message, ephemeral=True)
+
+    def _member_can_close(
+        self, member: discord.Member | discord.User, thread: discord.Thread, ticket: dict
+    ) -> bool:
+        has_manage_threads = False
+        parent = thread.parent
+        if parent is not None and isinstance(member, discord.Member):
+            has_manage_threads = parent.permissions_for(member).manage_threads
+        return can_close_ticket(
+            member_id=str(member.id),
+            ticket_owner_id=ticket.get("discord_user_id") or None,
+            has_manage_threads=has_manage_threads,
+        )
+
+    async def _perform_close(
+        self, *, member: discord.Member | discord.User, thread: discord.Thread, ticket: dict
+    ) -> tuple[bool, str]:
+        """Does the actual close (permission check, internal API call, ending an active
+        voice call for this ticket, posting + renaming + archiving + locking the thread).
+        Returns ``(ok, message)`` — the message is written to be shown either as an
+        ephemeral reply (/close, the button) or posted into the thread (a close reaction,
+        which has no ephemeral channel to reply on)."""
+        if not self._member_can_close(member, thread, ticket):
+            return False, "Only the ticket owner or staff with Manage Threads can close this."
+
+        result = await self.service_client.close_ticket(ticket["ticket_id"], closed_by=str(member.id))
+        if result is None:
+            return False, "Couldn't close this ticket right now. Please try again."
+
+        guild_id = thread.guild.id
+        call_state = self._active_calls.get(guild_id)
+        if call_state is not None and call_state.ticket_id == ticket["ticket_id"]:
+            await self._end_call(guild_id, reason="ticket_closed")
+
+        await thread.send(f"Ticket closed by {member.mention}.")
+        new_name = f"[closed] {thread.name}"[:100]
+        try:
+            await thread.edit(name=new_name, archived=True, locked=True, reason=f"Closed by {member}")
+        except discord.DiscordException:
+            logger.exception("failed to archive/lock ticket thread")
+        return True, "Ticket closed."
+
     # ---- helpers ----
+
+    async def _create_ticket_thread(
+        self,
+        *,
+        ticket_id: str,
+        category: str,
+        summary: str,
+        member: discord.Member,
+        priority: str = "normal",
+        footer: str = "Transcript follows when the conversation ends.",
+    ) -> str | None:
+        """Posts the opening message (with the persistent "Close ticket" button attached),
+        adds the player as a thread member, and reacts with the primary close emoji so
+        closing is one click there too. Shared by text tickets (modal + reaction) and voice
+        tickets."""
+        content = opening_post(
+            ticket_id=ticket_id,
+            category=category,
+            priority=priority,
+            summary=summary,
+            account_name=str(member),
+            conversation_id=None,
+            discord_user_id=str(member.id),
+            footer=footer,
+        )
+        thread_id = await self.discord_client.create_ticket_thread(
+            ticket_id=ticket_id,
+            title=f"#{ticket_id} {summary}"[:100],
+            content=content,
+            components=close_ticket_button_components(),
+        )
+        if not thread_id:
+            return None
+        await self.discord_client.add_thread_member(thread_id=thread_id, user_id=str(member.id))
+        await self._add_close_reaction(thread_id)
+        return thread_id
+
+    async def _add_close_reaction(self, thread_id: str) -> None:
+        try:
+            thread = self.get_channel(int(thread_id)) or await self.fetch_channel(int(thread_id))
+        except discord.DiscordException:
+            logger.exception("failed to fetch ticket thread to add close reaction")
+            return
+        try:
+            async for message in thread.history(limit=1, oldest_first=True):
+                await message.add_reaction(PRIMARY_CLOSE_EMOJI)
+                break
+        except discord.DiscordException:
+            logger.exception("failed to add close reaction to ticket opening post")
 
     async def _create_private_voice_channel(
         self, guild: discord.Guild, member: discord.Member
@@ -404,22 +635,61 @@ class VoiceBot(discord.Client):
         )
         if not ticket_id:
             return None, None
-        content = opening_post(
+        thread_id = await self._create_ticket_thread(
             ticket_id=ticket_id,
             category="other",
-            priority="normal",
             summary=summary,
-            account_name=str(member),
-            conversation_id=None,
-            discord_user_id=str(member.id),
-            footer="Live voice call in progress; the transcript is posted here when the call ends.",
+            member=member,
+            footer=VOICE_CALL_OPENING_FOOTER,
         )
-        thread_id = await self.discord_client.create_ticket_thread(
-            ticket_id=ticket_id, title=f"#{ticket_id} {summary}"[:100], content=content
-        )
-        if thread_id:
-            await self.discord_client.add_thread_member(thread_id=thread_id, user_id=str(member.id))
         return ticket_id, thread_id
+
+    async def _begin_voice_call(
+        self, guild: discord.Guild, member: discord.Member
+    ) -> discord.VoiceChannel | None:
+        """Everything after the guild's call slot is reserved: create the private channel,
+        open the ticket + thread, register the pending call, start the join-timeout, and
+        (best-effort) move the player in if they're already in voice. Returns the new
+        channel, or ``None`` on failure (having already released the guild's call slot)."""
+        try:
+            channel = await self._create_private_voice_channel(guild, member)
+        except Exception:
+            logger.exception("failed to create private voice channel")
+            self.calls.end(guild.id)
+            return None
+        self.calls.set_channel_id(guild.id, channel.id)
+
+        ticket_id, thread_id = await self._open_voice_ticket(member)
+
+        call_state = VoiceCallState(
+            pending=PendingCall(
+                guild_id=guild.id, user_id=member.id, channel_id=channel.id, created_at=time.monotonic()
+            ),
+            ticket_id=ticket_id,
+            thread_id=thread_id,
+        )
+        call_state.join_timeout_task = asyncio.create_task(self._join_timeout(guild.id))
+        self._active_calls[guild.id] = call_state
+
+        # Best-effort convenience: if the player is already in a voice channel and the bot
+        # has Move Members, pull them straight in instead of making them click the link.
+        voice_state = member.voice
+        if (
+            voice_state is not None
+            and voice_state.channel is not None
+            and guild.me is not None
+            and guild.me.guild_permissions.move_members
+        ):
+            try:
+                await member.move_to(channel, reason="Gatebound support call")
+            except discord.DiscordException:
+                logger.exception("failed to move member into private support channel")
+
+        logger.info(
+            "voice channel created",
+            extra={"fields": {"guild_id": guild.id, "channel_id": channel.id, "ticket_id": ticket_id}},
+        )
+        return channel
 
     async def _activate_call(self, call_state: VoiceCallState) -> None:
         if call_state.join_timeout_task is not None:
@@ -544,7 +814,7 @@ class VoiceBot(discord.Client):
 
         self.calls.end(guild_id)
 
-        if call_state.thread_id:
+        if call_state.thread_id and reason != "ticket_closed":
             if reason == "join_timeout":
                 note = "Call not started — nobody joined the voice channel within 2 minutes."
             else:
@@ -553,7 +823,9 @@ class VoiceBot(discord.Client):
                     if call_state.started_at is not None
                     else "Call ended."
                 )
-            await self.discord_client.post_message(thread_id=call_state.thread_id, content=note)
+            await self.discord_client.post_message(
+                thread_id=call_state.thread_id, content=note, components=close_ticket_button_components()
+            )
 
         logger.info(
             "voice call ended",

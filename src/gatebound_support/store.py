@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS tickets (
     discord_thread_id TEXT,
     discord_user_id TEXT,
     source TEXT NOT NULL DEFAULT 'web',
+    closed_at TEXT,
+    closed_by TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -95,6 +97,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(tickets)")}
     if "source" not in columns:
         conn.execute("ALTER TABLE tickets ADD COLUMN source TEXT NOT NULL DEFAULT 'web'")
+    if "closed_at" not in columns:
+        conn.execute("ALTER TABLE tickets ADD COLUMN closed_at TEXT")
+    if "closed_by" not in columns:
+        conn.execute("ALTER TABLE tickets ADD COLUMN closed_by TEXT")
 
 
 def new_draft_token() -> str:
@@ -251,6 +257,28 @@ def update_ticket_discord(
                    WHERE ticket_id = ?""",
                 (guild_id, thread_id, user_id, status, ticket_id),
             )
+
+
+def get_ticket_by_thread(data_dir: str, thread_id: str) -> dict[str, Any] | None:
+    """Resolves a Discord thread id back to its ticket — used by the bot's ``/close``
+    command, the persistent close button, and the close-by-reaction ChatOps path, all of
+    which only know the thread they're running in, not the ticket id."""
+    with get_connection(data_dir) as conn:
+        row = conn.execute(
+            "SELECT * FROM tickets WHERE discord_thread_id = ? ORDER BY created_at DESC LIMIT 1",
+            (thread_id,),
+        ).fetchone()
+    return dict(row) if row else None
+
+
+def close_ticket(data_dir: str, ticket_id: str, *, closed_by: str) -> None:
+    """Marks a ticket closed. Callers (routes/internal.py) are expected to have already
+    checked the ticket exists and isn't already closed (404/409) — this just writes."""
+    with get_connection(data_dir) as conn:
+        conn.execute(
+            "UPDATE tickets SET status = 'closed', closed_at = ?, closed_by = ? WHERE ticket_id = ?",
+            (_iso(_now()), closed_by, ticket_id),
+        )
 
 
 def get_open_ticket_for_user(data_dir: str, discord_user_id: str) -> dict[str, Any] | None:

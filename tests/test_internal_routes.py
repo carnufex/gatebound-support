@@ -154,6 +154,137 @@ async def test_patch_unknown_ticket_404(settings) -> None:
     assert response.status_code == 404
 
 
+# ---- close ----
+
+
+async def test_close_unknown_ticket_404(settings) -> None:
+    app = create_app(settings)
+    async with await _client(app) as client:
+        response = await client.post(
+            "/internal/tickets/GB-00000/close", headers=_auth(), json={"closed_by": "1"}
+        )
+    assert response.status_code == 404
+
+
+async def test_close_requires_auth(settings) -> None:
+    app = create_app(settings)
+    async with await _client(app) as client:
+        response = await client.post("/internal/tickets/GB-00000/close", json={"closed_by": "1"})
+    assert response.status_code == 401
+
+
+async def test_close_open_ticket_transitions_to_closed_and_excludes_from_open_lookup(settings) -> None:
+    app = create_app(settings)
+    async with await _client(app) as client:
+        create_response = await client.post(
+            "/internal/tickets",
+            headers=_auth(),
+            json={
+                "source": "discord_text",
+                "discord_user_id": "99",
+                "discord_username": "Closer#0001",
+                "category": "bug",
+                "summary": "Something broke",
+            },
+        )
+        ticket_id = create_response.json()["ticket_id"]
+        await client.patch(
+            f"/internal/tickets/{ticket_id}",
+            headers=_auth(),
+            json={"thread_id": "thread-close-1", "guild_id": "guild-1", "discord_user_id": "99"},
+        )
+
+        # still open and findable before close
+        open_response = await client.get(
+            "/internal/tickets/open", headers=_auth(), params={"discord_user_id": "99"}
+        )
+        assert open_response.status_code == 200
+
+        close_response = await client.post(
+            f"/internal/tickets/{ticket_id}/close", headers=_auth(), json={"closed_by": "99"}
+        )
+        assert close_response.status_code == 200
+        assert close_response.json() == {
+            "ticket_id": ticket_id,
+            "status": "closed",
+            "thread_id": "thread-close-1",
+        }
+
+        # a closed ticket must not block the user from opening a new one
+        open_after_close = await client.get(
+            "/internal/tickets/open", headers=_auth(), params={"discord_user_id": "99"}
+        )
+        assert open_after_close.status_code == 404
+
+    ticket = store.get_ticket(settings.DATA_DIR, ticket_id)
+    assert ticket["status"] == "closed"
+    assert ticket["closed_by"] == "99"
+    assert ticket["closed_at"] is not None
+
+
+async def test_close_already_closed_ticket_returns_409(settings) -> None:
+    app = create_app(settings)
+    async with await _client(app) as client:
+        create_response = await client.post(
+            "/internal/tickets",
+            headers=_auth(),
+            json={
+                "source": "discord_text",
+                "discord_user_id": "5",
+                "discord_username": "Twice#0001",
+                "category": "other",
+                "summary": "Double close attempt",
+            },
+        )
+        ticket_id = create_response.json()["ticket_id"]
+
+        first = await client.post(
+            f"/internal/tickets/{ticket_id}/close", headers=_auth(), json={"closed_by": "5"}
+        )
+        assert first.status_code == 200
+
+        second = await client.post(
+            f"/internal/tickets/{ticket_id}/close", headers=_auth(), json={"closed_by": "staff"}
+        )
+    assert second.status_code == 409
+
+
+# ---- by-thread lookup ----
+
+
+async def test_get_ticket_by_thread_404_when_unknown(settings) -> None:
+    app = create_app(settings)
+    async with await _client(app) as client:
+        response = await client.get("/internal/tickets/by-thread/no-such-thread", headers=_auth())
+    assert response.status_code == 404
+
+
+async def test_get_ticket_by_thread_resolves_ticket(settings) -> None:
+    app = create_app(settings)
+    async with await _client(app) as client:
+        create_response = await client.post(
+            "/internal/tickets",
+            headers=_auth(),
+            json={
+                "source": "discord_voice",
+                "discord_user_id": "123",
+                "discord_username": "ByThread#0001",
+                "category": "other",
+                "summary": "Voice call",
+            },
+        )
+        ticket_id = create_response.json()["ticket_id"]
+        await client.patch(
+            f"/internal/tickets/{ticket_id}",
+            headers=_auth(),
+            json={"thread_id": "thread-by-lookup", "guild_id": "guild-1", "discord_user_id": "123"},
+        )
+
+        response = await client.get("/internal/tickets/by-thread/thread-by-lookup", headers=_auth())
+    assert response.status_code == 200
+    assert response.json() == {"ticket_id": ticket_id, "status": "open", "discord_user_id": "123"}
+
+
 async def test_voice_conversation_webhook_finds_thread_created_via_internal_api(
     base_env, monkeypatch: pytest.MonkeyPatch
 ) -> None:

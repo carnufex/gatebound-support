@@ -59,8 +59,10 @@ def check(settings: Settings) -> int:
         from . import (  # noqa: F401
             audio_source,
             bot,
+            channels,
             elevenlabs_bridge,
             opus_support,
+            reactions,
             resampler,
             service_client,
             sink,

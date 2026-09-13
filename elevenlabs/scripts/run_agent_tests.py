@@ -68,6 +68,19 @@ def main() -> int:
                 rat = cr.get("rationale") or {}
                 rationale = (rat.get("summary") or (rat.get("messages") or [""])[0] or "")[:90]
             rows.append((cfg["name"], t.get("test_name") or t.get("test_id", "?"), t.get("status", "?"), rationale))
+            if not ok and "--verbose" in sys.argv:
+                print(f"--- {t.get('test_name')}: agent responses ---")
+                for r in t.get("agent_responses", []) or []:
+                    role = r.get("role", "?")
+                    msg = (r.get("message") or "")[:600]
+                    calls = [c.get("tool_name") for c in (r.get("tool_calls") or [])]
+                    results = [(c.get("tool_name"), (c.get("result_value") or "")[:300]) for c in (r.get("tool_results") or [])]
+                    print(f"[{role}] {msg}")
+                    if calls:
+                        print(f"   tool_calls: {calls}")
+                    if results:
+                        print(f"   tool_results: {results}")
+                print("---")
 
     widths = [max(len(r[i]) for r in rows) for i in range(3)]
     for agent_name, test_name, status, reason in rows:

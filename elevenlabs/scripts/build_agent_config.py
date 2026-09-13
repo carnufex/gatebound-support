@@ -40,7 +40,7 @@ You talk with players in the chat widget on gatebound.rosenvall.se. Most convers
 - Knowledge base: getting started, account and password, payments and coins, rules, guides, and what support can do. Use it for policy and how-to questions.
 
 # Rules (follow exactly)
-1. Never ask for, accept or repeat a password, a 2FA code, a payment card number or a recovery key. If the player sends one, tell them never to share it, and that they should change it now, then continue.
+1. Never ask for, accept or repeat a password, a 2FA code, a payment card number or a recovery key. If the player sends one, your reply must start with, in these words or very close: "Never share your password with anyone, including support. Please change it right away." Then continue with the actual problem without using the credential.
 2. You cannot change anything: no password resets, no coin credits, no item restores, no name changes, no bans, no unbans. Do not promise the team will do any of these either. Say what the process is (from the knowledge base) and offer a ticket.
 3. Never claim that a ticket exists until create_ticket_link or escalate_to_human returned a link. Never claim to have checked something without a tool result.
 4. Private data of other players (email, IP, account name, purchases) is never available, and you say so plainly if asked.
@@ -48,6 +48,7 @@ You talk with players in the chat widget on gatebound.rosenvall.se. Most convers
 6. Handover: if the player is clearly frustrated (repeated complaint, anger, insults, "this is useless"), asks for a human, or the issue is outside what you can look up, stop trying to solve it yourself. Call escalate_to_human with a summary written for the team, give the link, and say what happens next. Do not keep asking clarifying questions after that.
 7. Stay on Gatebound. For anything else, say it is outside what you can help with and offer the ticket if it is a support matter.
 8. When using create_ticket_link or escalate_to_human, write the summary for the staff member who will read it: what the player wants, character or account name if known, what you already checked, and what the tools returned.
+9. After create_ticket_link or escalate_to_human returns a url, your very next reply must contain all three of these: the link itself as a markdown link in text (in voice: say the link is in the chat on the page), "sign in with Discord", and that the team answers in the Discord ticket. Do not ask anything else in that reply.
 
 # Closing
 When the player says they are done, thank them and stop. In voice, call end_call only after they say goodbye, never in the same turn as a question."""
@@ -173,8 +174,11 @@ def build(template: dict) -> dict:
         "trigger_action": {"type": "end_call"},
     }]
     ps["call_limits"] = {"agent_concurrency_limit": 3, "bursting_enabled": False, "daily_limit": 100}
+    # enable_auth would make the embed widget fetch its config with a signed URL
+    # (401 otherwise, allowlist or not). Lab phase: auth off, cost bounded by
+    # call_limits below. Upgrade path: mint signed URLs in gatebound-support.
     ps["auth"] = {"allowlist": [{"hostname": "gatebound.rosenvall.se"}, {"hostname": "localhost"}],
-                  "enable_auth": True, "require_origin_header": False, "shareable_token": None}
+                  "enable_auth": False, "require_origin_header": False, "shareable_token": None}
     ps["privacy"]["retention_days"] = 30
     ps["sentiment_analysis"] = {"enabled": True}
     ps["widget"].update({

@@ -297,9 +297,8 @@ def build_mcp_server(settings: Settings, web_client: WebClient, discord_client: 
             "status": "ok",
             "url": draft["url"],
             "ticket_ref": draft["token"],
-            "spoken_summary": "I've prepared a ticket link. When the player opens it and signs in with "
-            "Discord, the ticket is created and the team answers there. The link is in the chat; do not "
-            "read it aloud.",
+            "spoken_summary": f"Here is your ticket link: {draft['url']} . Open it, sign in with Discord, "
+            "and the team will answer you in the Discord ticket.",
         }
 
     @mcp.tool()
@@ -319,9 +318,8 @@ def build_mcp_server(settings: Settings, web_client: WebClient, discord_client: 
             "status": "ok",
             "url": draft["url"],
             "ticket_ref": draft["token"],
-            "spoken_summary": "I've flagged this for the team and prepared a ticket link. When the player opens "
-            "it and signs in with Discord, the ticket is created and the team answers there. The link is "
-            "in the chat; do not read it aloud.",
+            "spoken_summary": f"I've flagged this for the team. Here is your ticket link: {draft['url']} . "
+            "Open it, sign in with Discord, and the team will answer you in the Discord ticket.",
         }
 
     return mcp

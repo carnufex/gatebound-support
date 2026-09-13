@@ -191,7 +191,20 @@ def build(template: dict) -> dict:
         "show_conversation_id": False, "feedback_mode": "end", "conversation_mode_toggle_enabled": True,
         "bg_color": "#0f1115", "text_color": "#e8e6e1", "btn_color": "#c9a24a", "btn_text_color": "#0f1115",
         "border_color": "#2a2d34", "focus_color": "#c9a24a",
-        "avatar": {"color_1": "#c9a24a", "color_2": "#3b3f4a", "type": "orb"},
+        # Gatebound gate icon (served by the website) instead of the default orb.
+        "avatar": {"type": "url", "custom_url": "https://gatebound.rosenvall.se/icon.svg"},
+        # The "full" widget variant themes itself from `styles`, not from the legacy
+        # bg_color/text_color fields above (kept for the older shareable page).
+        "styles": {
+            "base": "#0f1115", "base_hover": "#171a21", "base_active": "#1f232c",
+            "base_border": "#2a2d34", "base_subtle": "#8d8f97", "base_primary": "#e8e6e1",
+            "base_error": "#e24b4a",
+            "accent": "#c9a24a", "accent_hover": "#d6b15e", "accent_active": "#b8913f",
+            "accent_border": "#c9a24a", "accent_subtle": "#3a3220", "accent_primary": "#0f1115",
+            "bubble_radius": None, "button_radius": None, "compact_sheet_radius": None,
+            "dropdown_sheet_radius": None, "input_radius": None, "overlay_padding": None,
+            "sheet_radius": None,
+        },
     })
     # Post-call transcripts go to this project's own workspace webhook
     # (gatebound-support.rosenvall.se/webhooks/elevenlabs), not the workspace default.

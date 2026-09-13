@@ -68,8 +68,11 @@ class WebClient:
     async def get_character(self, name: str) -> Result:
         return await self._get(f"/api/support/character/{quote(name)}")
 
-    async def search_library(self, query: str, limit: int = 8) -> Result:
-        return await self._get("/api/support/library/search", params={"q": query, "limit": limit})
+    async def search_library(self, query: str, limit: int = 8, kind: str | None = None) -> Result:
+        params: dict[str, str | int] = {"q": query, "limit": limit}
+        if kind:
+            params["kind"] = kind
+        return await self._get("/api/support/library/search", params=params)
 
     async def get_item(self, slug: str) -> Result:
         return await self._get(f"/api/support/library/item/{quote(slug)}")

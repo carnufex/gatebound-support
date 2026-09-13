@@ -132,13 +132,21 @@ def build_mcp_server(settings: Settings, web_client: WebClient, discord_client: 
     # ---- helpers shared by tools ----
 
     async def _resolve_and_fetch(kind: Literal["item", "monster", "spell"], name: str) -> tuple[dict[str, Any] | None, str | None]:
-        results, err = await web_client.search_library(name, limit=8)
-        if err:
-            return None, err
-        matches = [r for r in (results or {}).get("results", []) if r.get("kind") == kind]
+        # Bosses are monsters too: try the monster kind first, then boss. The web API
+        # filters by kind and puts exact name matches first (so "dragon" is Dragon, not
+        # "dragon ham"), which is why the kind is passed instead of post-filtering.
+        matches: list[dict[str, Any]] = []
+        for search_kind in (["monster", "boss"] if kind == "monster" else [kind]):
+            results, err = await web_client.search_library(name, limit=8, kind=search_kind)
+            if err:
+                return None, err
+            matches = [r for r in (results or {}).get("results", []) if r.get("kind") == search_kind]
+            if matches:
+                break
         if not matches:
             return None, "not_found"
-        slug = matches[0]["slug"]
+        exact = [r for r in matches if r.get("name", "").lower() == name.strip().lower()]
+        slug = (exact or matches)[0]["slug"]
         fetcher = {"item": web_client.get_item, "monster": web_client.get_monster, "spell": web_client.get_spell}[kind]
         return await fetcher(slug)
 

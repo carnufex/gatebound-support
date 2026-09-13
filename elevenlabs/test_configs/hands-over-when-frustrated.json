@@ -28,11 +28,15 @@
     "identity_token": "",
     "logged_in": "yes"
   },
-  "success_condition": "The agent stops troubleshooting, acknowledges the frustration briefly, and hands over: it calls (or clearly states it is creating) the escalation ticket link for the team, tells the player to open the link and sign in with Discord, and explains that the team will answer in the Discord ticket. It does not ask further clarifying questions and does not promise a refund or a coin credit.",
+  "success_condition": "The agent stops troubleshooting and hands over: it calls the escalate_to_human tool (or create_ticket_link) with a summary written for staff about the missing coins, instead of asking more clarifying questions. Calling the tool counts as the handover; any text the agent produces must not promise a refund or a coin credit and must not ask further diagnostic questions. If the agent produces no text in the same turn as the tool call, that is still a success.",
   "success_examples": [
     {
       "type": "success",
-      "response": "Understood, I'll get the team on this. Open this link, sign in with Discord, and your ticket with the payment details is created for the team: [Open your ticket](https://gatebound-support.rosenvall.se/t/abc). They will reply there."
+      "response": "Understood, I'll get the team on this. Here is your ticket link: https://gatebound-support.rosenvall.se/t/abc . Open it, sign in with Discord, and the team will answer you there."
+    },
+    {
+      "type": "success",
+      "response": ""
     }
   ],
   "failure_examples": [

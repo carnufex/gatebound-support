@@ -64,6 +64,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(webhook_routes.build_router(settings, discord_client, elevenlabs_client))
     app.include_router(status_routes.build_router(settings, web_client, elevenlabs_client, discord_client))
 
-    app.mount("/mcp", mcp_asgi_app)
+    # Mounted at "/" (last, so real routes win) and serving exactly /mcp inside: see
+    # mcp_server.wrap_with_auth for why a Mount("/mcp") would redirect.
+    app.mount("/", mcp_asgi_app)
 
     return app

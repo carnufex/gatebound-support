@@ -11,7 +11,16 @@ def _serve(argv: list[str]) -> int:
     from .settings import get_settings
 
     settings = get_settings()
-    uvicorn.run("gatebound_support.app:create_app", factory=True, host="0.0.0.0", port=settings.PORT)
+    # Behind the cluster gateway (TLS terminated upstream): trust X-Forwarded-* so any
+    # generated absolute URL or redirect keeps the https scheme.
+    uvicorn.run(
+        "gatebound_support.app:create_app",
+        factory=True,
+        host="0.0.0.0",
+        port=settings.PORT,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
+    )
     return 0
 
 

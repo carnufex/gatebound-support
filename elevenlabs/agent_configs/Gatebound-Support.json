@@ -71,7 +71,44 @@
         "enable_parallel_tool_calls": false,
         "enable_reasoning_summary": false,
         "ignore_default_personality": true,
-        "knowledge_base": [],
+        "knowledge_base": [
+          {
+            "type": "text",
+            "name": "Account, login and password help",
+            "id": "hsqgPlJCy8uIuHOUaB9I",
+            "usage_mode": "auto"
+          },
+          {
+            "type": "text",
+            "name": "Game guide summaries",
+            "id": "GFEE2hrEhE8JGOdq2KSw",
+            "usage_mode": "auto"
+          },
+          {
+            "type": "text",
+            "name": "Getting started on Gatebound",
+            "id": "A2pev3CQk2467INEui5b",
+            "usage_mode": "auto"
+          },
+          {
+            "type": "text",
+            "name": "Payments, coins and the shop",
+            "id": "QJ93tlQeZV8qN6oBzhyJ",
+            "usage_mode": "auto"
+          },
+          {
+            "type": "text",
+            "name": "Rules and conduct",
+            "id": "01bAYUKNML7AqmG0an0E",
+            "usage_mode": "auto"
+          },
+          {
+            "type": "text",
+            "name": "What the support agent can and can't do",
+            "id": "y7gl0dYxaNHso8Kna54E",
+            "usage_mode": "auto"
+          }
+        ],
         "llm": "gemini-2.5-flash-lite",
         "max_tokens": -1,
         "mcp_server_ids": [],

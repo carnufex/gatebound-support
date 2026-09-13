@@ -102,10 +102,14 @@ def build(template: dict) -> dict:
     pr["prompt"] = PROMPT
     pr["llm"] = "gemini-2.5-flash-lite"
     pr["temperature"] = 0.2
-    pr["knowledge_base"] = []
+    # knowledge_base and mcp_server_ids are owned by kb-sync and the MCP registration;
+    # scripts/sync_agent_refs.py copies the live values into the committed config.
+    # Keep whatever the committed config has; only a foreign template starts empty.
+    if template.get("name") != "Gatebound Support":
+        pr["knowledge_base"] = []
+        pr["mcp_server_ids"] = []
     pr["tool_ids"] = []
     pr["tools"] = []
-    pr["mcp_server_ids"] = []
     pr["native_mcp_server_ids"] = []
     pr["rag"]["enabled"] = True
     pr["built_in_tools"]["end_call"] = system_tool(

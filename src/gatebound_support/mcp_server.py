@@ -61,6 +61,16 @@ class McpAuthContextMiddleware:
             return
 
         request = Request(scope)
+        # The inner app is mounted at "/" and serves exactly MCP_PATH, so anything else
+        # that reaches this middleware is an unknown path, not an auth failure.
+        if scope.get("path", "") == MCP_PATH + "/":
+            # accept the trailing-slash spelling too, without a redirect
+            scope["path"] = MCP_PATH
+            scope["raw_path"] = MCP_PATH.encode()
+        if scope.get("path", "") != MCP_PATH:
+            response = JSONResponse({"error": "not_found"}, status_code=404)
+            await response(scope, receive, send)
+            return
         secret = self._settings.MCP_SECRET
         auth_header = request.headers.get("authorization", "")
         expected = f"Bearer {secret}"
@@ -320,6 +330,13 @@ def wrap_with_auth(mcp: FastMCP, settings: Settings) -> ASGIApp:
     itself, in the *outer* app's lifespan (see app.py) — ``session_manager`` is only
     available after this function calls ``streamable_http_app()``.
     """
-    mcp.settings.streamable_http_path = "/"
+    # Served at exactly MCP_PATH with the inner app mounted at "/": a Mount("/mcp") would
+    # answer a request for "/mcp" with a redirect to "/mcp/", which ElevenLabs (and the
+    # MCP client) do not follow, and behind the TLS-terminating gateway that redirect
+    # even pointed at plain http.
+    mcp.settings.streamable_http_path = MCP_PATH
     inner_app = mcp.streamable_http_app()
     return McpAuthContextMiddleware(inner_app, settings)
+
+
+MCP_PATH = "/mcp"

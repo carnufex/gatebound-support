@@ -45,7 +45,7 @@ codes).
 
 **Decision.** The agent only creates a *draft* and returns a link. The player opens
 the link, signs in with Discord (OAuth2, `identify` scope), and the ticket is created
-as a forum post with them added to the thread. The click is the identity. The same
+as a private thread in the #support channel with them added as a member, so each player sees only their own ticket. The click is the identity. The same
 page, without a draft, is the fallback form that works when ElevenLabs is down.
 
 **Rejected.** Pre-linked Discord accounts on the website; claim codes typed in

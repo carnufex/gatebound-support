@@ -37,8 +37,7 @@ def base_env(tmp_path: Path) -> dict[str, str]:
         "DISCORD_CLIENT_SECRET": "unset",
         "DISCORD_BOT_TOKEN": "unset",
         "DISCORD_GUILD_ID": "unset",
-        "DISCORD_FORUM_CHANNEL_ID": "unset",
-        "DISCORD_TAG_OPEN_ID": "unset",
+        "DISCORD_SUPPORT_CHANNEL_ID": "unset",
         "DISCORD_STAFF_WEBHOOK_URL": "unset",
     }
 

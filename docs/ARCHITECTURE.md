@@ -12,7 +12,7 @@ the parts is [SPEC.md](SPEC.md); the reasoning is in [DECISIONS.md](DECISIONS.md
 | Widget | `gatebound.rosenvall.se`, private repo (`web/components/SupportWidget*.tsx`) | Probes `/status`; renders the ElevenLabs widget with `identity_token`, `player_name`, `logged_in`; degrades to a plain "Support" link when the service or ElevenLabs is down |
 | Web support API | private repo, `web/app/api/support/*` | Shared-secret, allowlisted DTOs over the game database. The only thing in the system that touches MariaDB |
 | Agent | ElevenLabs workspace, config in `elevenlabs/` | Prompt, tools (via MCP), knowledge base, tests, evaluation criteria, guardrail, data collection |
-| Support service | this repo, `gatebound-support` namespace | `/mcp` tools, ticket pages, Discord OAuth and forum posts, post-call webhook, `/status` |
+| Support service | this repo, `gatebound-support` namespace | `/mcp` tools, ticket pages, Discord OAuth and private ticket threads, post-call webhook, `/status` |
 | kb-sync | this repo, CLI | Git markdown → ElevenLabs knowledge base, manifest, drift check |
 
 ## Request paths
@@ -22,7 +22,7 @@ the parts is [SPEC.md](SPEC.md); the reasoning is in [DECISIONS.md](DECISIONS.md
 2. Tool call            ElevenLabs ─► POST /mcp (bearer) ─► service ─► GET web /api/support/* (X-Support-Token)
 3. Identity             web /api/support/session (cookie) ─► identity_token ─► dynamic variable
                         ─► X-Support-Identity header on /mcp ─► forwarded to web /api/support/account
-4. Ticket               tool returns /t/<token> ─► player clicks ─► Discord OAuth ─► forum post + thread member
+4. Ticket               tool returns /t/<token> ─► player clicks ─► Discord OAuth ─► private thread + thread member
                         ─► redirect to the Discord thread
 5. Transcript           ElevenLabs post-call webhook (HMAC) ─► /webhooks/elevenlabs ─► SQLite ─► Discord thread
 6. Fallback             widget sees /status != ok ─► link to /ticket/new (form) ─► same ticket path, no models
@@ -38,7 +38,7 @@ the parts is [SPEC.md](SPEC.md); the reasoning is in [DECISIONS.md](DECISIONS.md
 - **Service ↔ web**: `X-Support-Token` (constant-time compare) plus the forwarded
   identity token, which the web verifies itself (issuer, audience, expiry).
 - **Service ↔ Discord**: OAuth2 `identify` for the player; bot token for creating
-  the forum post and adding the thread member.
+  the private ticket thread and adding the player to it.
 - **Model ↔ world**: the model never receives a credential, never sees another
   player's private data (the DTOs do not contain it), and cannot change anything
   (no write tool exists). Instructions inside tool results are data; the prompt,
@@ -63,5 +63,5 @@ the parts is [SPEC.md](SPEC.md); the reasoning is in [DECISIONS.md](DECISIONS.md
 - ElevenLabs: transcripts, tool calls with latency, cost per conversation, sentiment,
   evaluation results, data collection (`issue_category`, `resolved_by_agent`,
   `ticket_ref`, `handover_reason`).
-- Discord: every ticket is a forum post with the summary and, after the call, the
+- Discord: every ticket is a private thread in #support with the summary and, after the call, the
   transcript.

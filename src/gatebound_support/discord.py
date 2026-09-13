@@ -1,4 +1,4 @@
-"""Discord REST integration: OAuth2 identify, forum ticket posts, transcript follow-ups,
+"""Discord REST integration: OAuth2 identify, private ticket threads, transcript follow-ups,
 and the staff heads-up webhook. Every method is a no-op (returns None / False) when Discord
 is not configured — SPEC §1: "unset" means disabled, and the affected feature degrades with
 an explicit message rather than failing.
@@ -109,31 +109,45 @@ class DiscordClient:
             return None
         return response.json()
 
-    # ---- Forum ticket posts ----
+    # ---- Ticket threads ----
 
-    async def create_forum_post(self, *, ticket_id: str, title: str, content: str) -> str | None:
-        """Creates the forum thread for a ticket. Returns the thread id, or None on failure."""
+    async def create_ticket_thread(self, *, ticket_id: str, title: str, content: str) -> str | None:
+        """Creates a PRIVATE thread (type 12) for a ticket in the support text channel and
+        posts the opening message. Returns the thread id, or None on failure.
+
+        Private threads are the only Discord primitive where "add the player as a member"
+        also controls who can see it: the channel itself can be visible to everyone
+        (read-only), each player sees just their own thread, and staff with Manage Threads
+        see all of them. Forum posts cannot be private, and a member of a thread still
+        needs to be able to view the parent channel.
+        """
         if not self.enabled:
             return None
-        body: dict[str, Any] = {"name": title[:100], "message": {"content": content}}
-        if enabled(self._settings.DISCORD_TAG_OPEN_ID):
-            body["applied_tags"] = [self._settings.DISCORD_TAG_OPEN_ID]
+        body: dict[str, Any] = {
+            "name": title[:100],
+            "type": 12,  # GUILD_PRIVATE_THREAD
+            "auto_archive_duration": 10080,
+            "invitable": False,
+        }
         try:
             response = await self._client.post(
-                f"{API_BASE}/channels/{self._settings.DISCORD_FORUM_CHANNEL_ID}/threads",
+                f"{API_BASE}/channels/{self._settings.DISCORD_SUPPORT_CHANNEL_ID}/threads",
                 headers=self._bot_headers(),
                 json=body,
             )
         except httpx.RequestError:
-            logger.warning("discord forum post failed", extra={"fields": {"ticket_id": ticket_id}})
+            logger.warning("discord thread create failed", extra={"fields": {"ticket_id": ticket_id}})
             return None
         if response.status_code not in (200, 201):
             logger.warning(
-                "discord forum post rejected",
+                "discord thread create rejected",
                 extra={"fields": {"ticket_id": ticket_id, "status": response.status_code}},
             )
             return None
-        return response.json().get("id")
+        thread_id = response.json().get("id")
+        if thread_id:
+            await self.post_message(thread_id=thread_id, content=content)
+        return thread_id
 
     async def add_thread_member(self, *, thread_id: str, user_id: str) -> None:
         if not self.enabled:

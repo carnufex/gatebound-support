@@ -86,6 +86,6 @@ reference (all default to `"unset"`, meaning that integration is disabled):
 | `SUPPORT_IDENTITY_SECRET` | HS256 key for the player identity JWT |
 | `MCP_SECRET` | bearer secret ElevenLabs sends on `/mcp` |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_WEBHOOK_SECRET`, `ELEVENLABS_AGENT_ID` | ElevenLabs API access, post-call webhook HMAC key, and agent id |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_FORUM_CHANNEL_ID`, `DISCORD_TAG_OPEN_ID`, `DISCORD_STAFF_WEBHOOK_URL` | the ticket flow's Discord integration |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_SUPPORT_CHANNEL_ID`, `DISCORD_STAFF_WEBHOOK_URL` | the ticket flow's Discord integration |
 
 Copy `.env.example` to `.env` and fill in what you need; everything else can stay `unset`.

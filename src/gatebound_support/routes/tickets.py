@@ -1,4 +1,4 @@
-"""Ticket flow (SPEC §5): draft link -> Discord OAuth -> forum post, plus the no-agent
+"""Ticket flow (SPEC §5): draft link -> Discord OAuth -> private thread, plus the no-agent
 fallback form and a minimal status page."""
 
 from __future__ import annotations
@@ -156,7 +156,7 @@ def build_router(settings: Settings, web_client: WebClient, discord_client: Disc
             conversation_id=draft["conversation_id"],
             discord_user_id=user["id"],
         )
-        thread_id = await discord_client.create_forum_post(ticket_id=ticket_id, title=title, content=content)
+        thread_id = await discord_client.create_ticket_thread(ticket_id=ticket_id, title=title, content=content)
         if not thread_id:
             return RedirectResponse(f"/ticket/{ticket_id}", status_code=302)
 

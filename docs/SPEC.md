@@ -13,7 +13,7 @@ Player ──► gatebound.rosenvall.se (Next.js, private repo)
              ▼
        gatebound-support.rosenvall.se (this repo, Python/FastAPI)
              │  /mcp                 tools for the agent
-             │  /t/<token>           ticket link page → Discord OAuth → forum post
+             │  /t/<token>           ticket link page → Discord OAuth → private thread
              │  /ticket/new          fallback form (no agent involved)
              │  /webhooks/elevenlabs post-call transcript
              │  /status              health incl. ElevenLabs reachability
@@ -34,8 +34,8 @@ Player ──► gatebound.rosenvall.se (Next.js, private repo)
 | `ELEVENLABS_WEBHOOK_SECRET` | support | HMAC secret of the post-call webhook. |
 | `ELEVENLABS_AGENT_ID` | support + web | The agent id. Web needs it for the widget (`SUPPORT_AGENT_ID` env, read server-side at request time — never `NEXT_PUBLIC_*`). |
 | `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` | support | OAuth2 app (scope `identify`). |
-| `DISCORD_BOT_TOKEN` | support | Bot in the guild with: View Channels, Send Messages, Create Public/Private Threads, Send Messages in Threads, Manage Threads on the forum channel. |
-| `DISCORD_GUILD_ID`, `DISCORD_FORUM_CHANNEL_ID` | support | Where tickets land. `DISCORD_TAG_OPEN_ID` optional forum tag applied to new posts. |
+| `DISCORD_BOT_TOKEN` | support | Bot in the guild with, on the support channel: View Channel, Send Messages, Create Private Threads, Send Messages in Threads, Manage Threads. |
+| `DISCORD_GUILD_ID`, `DISCORD_SUPPORT_CHANNEL_ID` | support | The guild and the text channel (visible to everyone, read-only) whose private threads are the tickets. |
 | `DISCORD_STAFF_WEBHOOK_URL` | support, optional | Incoming webhook for the staff heads-up on escalations. |
 
 Convention (same as oncall-voice-copilot): a secret with the literal value `unset` or empty
@@ -113,9 +113,12 @@ case-insensitively. Every route answers 404 as `{"status": "not_found"}` with HT
 2. Button → `GET /t/<token>/discord` → redirect to Discord OAuth2 authorize
    (`scope=identify`, `state` = signed token, `prompt=none` not required).
 3. `GET /oauth/discord/callback?code&state` → exchange code (client secret), `GET /users/@me`
-   → creates the forum post with the bot token:
-   `POST /channels/{DISCORD_FORUM_CHANNEL_ID}/threads` body
-   `{ "name": "#<ticket_id> <summary, max 80 chars>", "applied_tags": [tag?], "message": { "content": <opening post> } }`,
+   → creates a PRIVATE thread with the bot token (forum posts cannot be private, and a
+   thread member still needs to see the parent channel, so the channel is public/read-only
+   and visibility is controlled by thread membership):
+   `POST /channels/{DISCORD_SUPPORT_CHANNEL_ID}/threads` body
+   `{ "name": "#<ticket_id> <summary, max 80 chars>", "type": 12, "auto_archive_duration": 10080, "invitable": false }`,
+   then `POST /channels/{thread_id}/messages` with the opening post,
    then `PUT /channels/{thread_id}/thread-members/{user_id}`.
    Opening post: category, priority, summary, account name (if known), conversation id,
    `<@user_id>`, and "Transcript follows when the conversation ends."

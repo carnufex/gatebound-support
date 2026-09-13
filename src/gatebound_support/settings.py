@@ -39,8 +39,7 @@ class Settings(BaseSettings):
     DISCORD_CLIENT_SECRET: str = "unset"
     DISCORD_BOT_TOKEN: str = "unset"
     DISCORD_GUILD_ID: str = "unset"
-    DISCORD_FORUM_CHANNEL_ID: str = "unset"
-    DISCORD_TAG_OPEN_ID: str = "unset"
+    DISCORD_SUPPORT_CHANNEL_ID: str = "unset"
     DISCORD_STAFF_WEBHOOK_URL: str = "unset"
 
     @property

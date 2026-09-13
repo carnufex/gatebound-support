@@ -3,6 +3,7 @@ verification, and the knowledge-base calls used by kb-sync.
 
 Endpoints verified against https://elevenlabs.io/docs/api-reference (fetched 2026-09-13):
   GET   /v1/convai/agents/{agent_id}
+  GET   /v1/convai/conversation/get-signed-url?agent_id=...   (widget: private agent)
   GET   /v1/convai/conversations/{conversation_id}
   GET   /v1/convai/knowledge-base/{documentation_id}
   POST  /v1/convai/knowledge-base/text
@@ -102,6 +103,32 @@ class ElevenLabsClient:
             status = "degraded"
         self._agent_probe_cache[agent_id] = (now, status)
         return status
+
+    # ---- signed URL for the website widget (private agent) ----
+
+    async def get_signed_url(self, agent_id: str) -> str | None:
+        """Mints a short-lived ``wss://`` signed URL that lets a browser start one conversation
+        with the (auth-enabled) agent. None on any failure; never raises. The URL carries the
+        conversation signature and must not be logged."""
+        if not self.enabled or not agent_id or agent_id == "unset":
+            return None
+        try:
+            response = await self._client.get(
+                "/v1/convai/conversation/get-signed-url",
+                params={"agent_id": agent_id},
+                headers=self._headers(),
+            )
+        except httpx.RequestError as exc:
+            logger.warning("signed_url_request_error", extra={"fields": {"error": type(exc).__name__}})
+            return None
+        if response.status_code != 200:
+            logger.warning("signed_url_bad_status", extra={"fields": {"status_code": response.status_code}})
+            return None
+        try:
+            signed_url = response.json().get("signed_url")
+        except ValueError:
+            return None
+        return signed_url if isinstance(signed_url, str) and signed_url else None
 
     # ---- conversation fetch ----
 

@@ -92,3 +92,30 @@ else. Secrets live in Bitwarden Secrets Manager, delivered by ExternalSecrets.
 
 **Consequences.** Portfolio value for the ElevenLabs work; forced discipline about
 what the support stack may know.
+
+## 7. Private agent, signed URLs minted by the support service
+
+**Context.** With `enable_auth` off anyone who reads the agent id out of the page can run
+conversations against the workspace; the only cost ceiling was `call_limits`. Turning auth
+on broke the embed: its config fetch returned 401 ("Neither authorization header,
+xi-api-key, nor conversation_signature received"), allowlist or not.
+
+**Decision.** Auth on. `GET /widget/signed-url` in gatebound-support calls
+`/v1/convai/conversation/get-signed-url` with the workspace key and returns the `wss://`
+URL; the page passes it as `<elevenlabs-convai signed-url>`. The embed (verified in
+`@elevenlabs/convai-widget-core`, `contexts/widget-config.tsx`) extracts `agent_id` and
+`conversation_signature` from that URL, appends the signature to its config fetch and
+starts the conversation over websocket with it, so the stock widget keeps working in text
+mode. The endpoint is CORS-locked to the website origin, rate-limited per client (Cloudflare
+`CF-Connecting-IP`) and globally, and never logs the key or the URL.
+
+**Rejected.** `@elevenlabs/react` `Conversation` in text mode (more code, loses the hosted
+widget UI, language selector and feedback for no security gain); `shareable_token`
+(one long-lived secret in the page is the situation we are leaving); leaving auth off and
+relying on `call_limits` alone.
+
+**Consequences.** ElevenLabs credits can only be spent through gatebound-support, so the
+per-minute budget is ours to set. Signed URLs expire, hence the 10 minute refresh and the
+refresh after each call start. Local web development against production support does not
+get a signed URL (production origin only); run the support service locally for that.
+

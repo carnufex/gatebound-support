@@ -150,6 +150,32 @@ The widget (web) fetches `/status` once on mount; if `elevenlabs != "ok"` it ren
 "Create a ticket" button linking to `PUBLIC_BASE_URL/ticket/new` instead of the ElevenLabs
 widget. `/healthz` is a plain liveness `{"ok": true}` with no upstream calls.
 
+## 6a. Signed URL endpoint (private agent)
+
+The agent has `platform_settings.auth.enable_auth = true`, so a bare `agent-id` cannot start
+a conversation and the widget's own config fetch (`GET /v1/convai/agents/{id}/widget`) is
+401 without a `conversation_signature`. The support service mints the signature:
+
+`GET /widget/signed-url` → `200 {"signed_url": "wss://api.elevenlabs.io/v1/convai/conversation?agent_id=...&conversation_signature=..."}`
+
+- Upstream: `GET https://api.elevenlabs.io/v1/convai/conversation/get-signed-url?agent_id=...`
+  with the API key, 5 s timeout. Failure → `503 {"status": "unavailable"}`; ElevenLabs or the
+  agent id unconfigured → `503 {"status": "unconfigured"}`.
+- CORS: `https://gatebound.rosenvall.se` only (no localhost; a request carrying any other
+  `Origin` is `403 {"status": "forbidden"}`). `Cache-Control: no-store`.
+- Rate limit (in-memory token buckets, single replica): 10 per client per minute (burst 10)
+  keyed on `CF-Connecting-IP` (falls back to the socket peer), plus 120 per minute globally.
+  Over the limit → `429 {"status": "rate_limited"}` with `Retry-After`.
+- Never logs the API key or the signed URL (the URL is the credential); logs only
+  issued/rate-limited/unavailable events with the client key.
+
+The widget (web) fetches this after the `/status` probe says `elevenlabs: "ok"` and renders
+`<elevenlabs-convai signed-url=...>` (no `agent-id`: the embed prefers `agent-id` over
+`signed-url` when both are set, which would bypass the signature). Signed URLs are short
+lived, so the page refreshes it every 10 minutes and shortly after each conversation start
+(the `elevenlabs-convai:call` DOM event). A failed signed-URL fetch on mount degrades to the
+"Create a ticket" button like an unhealthy `/status`; a failed refresh keeps the previous URL.
+
 ## 7. kb-sync (this repo, `gatebound-support kb-sync`)
 
 ```

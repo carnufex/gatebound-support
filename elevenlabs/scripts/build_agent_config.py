@@ -174,11 +174,13 @@ def build(template: dict) -> dict:
         "trigger_action": {"type": "end_call"},
     }]
     ps["call_limits"] = {"agent_concurrency_limit": 3, "bursting_enabled": False, "daily_limit": 100}
-    # enable_auth would make the embed widget fetch its config with a signed URL
-    # (401 otherwise, allowlist or not). Lab phase: auth off, cost bounded by
-    # call_limits below. Upgrade path: mint signed URLs in gatebound-support.
+    # Private agent: the widget config fetch and the conversation both need a
+    # conversation_signature (401 otherwise, allowlist or not). gatebound-support
+    # mints signed URLs at GET /widget/signed-url (CORS-locked to the website,
+    # rate-limited) and the page passes them as <elevenlabs-convai signed-url>.
+    # call_limits above stay as the hard cost ceiling.
     ps["auth"] = {"allowlist": [{"hostname": "gatebound.rosenvall.se"}, {"hostname": "localhost"}],
-                  "enable_auth": False, "require_origin_header": False, "shareable_token": None}
+                  "enable_auth": True, "require_origin_header": False, "shareable_token": None}
     ps["privacy"]["retention_days"] = 30
     ps["sentiment_analysis"] = {"enabled": True}
     ps["widget"].update({

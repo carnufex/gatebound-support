@@ -1,5 +1,5 @@
 """FastAPI application factory: mounts the MCP server at /mcp and the HTTP routers for the
-ticket flow, webhooks, and status endpoints (SPEC §5, §6)."""
+ticket flow, webhooks, status and widget signed-URL endpoints (SPEC §5, §6, §6a)."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from .mcp_server import build_mcp_server, wrap_with_auth
 from .routes import status as status_routes
 from .routes import tickets as ticket_routes
 from .routes import webhooks as webhook_routes
+from .routes import widget as widget_routes
 from .settings import Settings, get_settings
 from .store import db_path
 from .webclient import WebClient
@@ -63,6 +64,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(ticket_routes.build_router(settings, web_client, discord_client))
     app.include_router(webhook_routes.build_router(settings, discord_client, elevenlabs_client))
     app.include_router(status_routes.build_router(settings, web_client, elevenlabs_client, discord_client))
+    app.include_router(widget_routes.build_router(settings, elevenlabs_client))
 
     # Mounted at "/" (last, so real routes win) and serving exactly /mcp inside: see
     # mcp_server.wrap_with_auth for why a Mount("/mcp") would redirect.

@@ -316,7 +316,7 @@
           "hostname": "localhost"
         }
       ],
-      "enable_auth": false,
+      "enable_auth": true,
       "require_origin_header": false,
       "shareable_token": null
     },

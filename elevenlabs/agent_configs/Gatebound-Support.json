@@ -634,7 +634,7 @@
       "conversation_mode_toggle_enabled": true,
       "custom_avatar_path": null,
       "default_expanded": false,
-      "disable_banner": false,
+      "disable_banner": true,
       "dismissible": false,
       "end_call_text": null,
       "end_feedback": {

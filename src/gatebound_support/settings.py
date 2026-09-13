@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     DISCORD_SUPPORT_CHANNEL_ID: str = "unset"
     DISCORD_STAFF_WEBHOOK_URL: str = "unset"
 
+    # --- voicebot (Discord voice bridge, docs/SPEC.md has no section for this yet) ---
+    VOICE_MAX_MINUTES: int = 15
+    # In-cluster base URL for this same service's /internal API (routes/internal.py), used
+    # by the voicebot process (a separate Deployment, same image) to create/update tickets.
+    SUPPORT_INTERNAL_URL: str = "http://gatebound-support.gatebound-support.svc.cluster.local:8080"
+
     @property
     def discord_enabled(self) -> bool:
         return enabled(self.DISCORD_CLIENT_ID) and enabled(self.DISCORD_CLIENT_SECRET) and enabled(self.DISCORD_BOT_TOKEN)

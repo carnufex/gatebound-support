@@ -64,6 +64,48 @@ uv run gatebound-support kb-sync --dir ... --manifest ... --agent ... --check   
 
 Requires `ELEVENLABS_API_KEY`.
 
+## Discord voice
+
+`gatebound-support voicebot` is a second, separate long-lived process (own container
+command, own Kubernetes Deployment — same image, `command: ["gatebound-support",
+"voicebot"]`, no HTTP service) that runs the Discord gateway connection and bridges voice:
+
+- **`/support` or `/call`** (run in a voice channel): the bot "Gatebound Support" joins the
+  player's current voice channel and bridges audio both ways to the ElevenLabs
+  Conversational AI agent — the same agent the website widget talks to, over the SDK's
+  `Conversation` + a custom `AudioInterface` (see `src/gatebound_support/voicebot/`). A
+  ticket + private Discord thread is opened for the call up front (source
+  `discord_voice`), and the post-call transcript webhook posts the summary and transcript
+  to that thread when the call ends, exactly like the website ticket flow.
+- **`/hangup`**: ends the current call early.
+- The call also ends when the player leaves the voice channel, the agent says goodbye
+  (its own `end_call` tool), or after `VOICE_MAX_MINUTES` (default 15).
+- One call per Discord server at a time — a second `/support` while busy gets an ephemeral
+  "the line is busy" reply.
+- **`/ticket`**, and a persistent **"Open a ticket"** button pinned in the support channel,
+  open a text ticket via a modal (category + description) without going through the
+  ElevenLabs agent at all — same private-thread flow, source `discord_text`. One open
+  ticket per Discord user at a time; opening a second one just links back to the first.
+
+The bot talks to this same service's `/internal` API (bearer `MCP_SECRET`, not part of the
+public contract in `docs/SPEC.md`) to create and update tickets, since it's a separate
+process from the one holding SQLite.
+
+**Discord bot permissions needed** (added when inviting/authorizing the bot, or updating its
+existing OAuth2 scopes): `View Channel`, `Send Messages`, `Create Private Threads`, `Send
+Messages in Threads`, `Manage Threads` (already required for the text ticket flow) plus
+**`Connect`**, **`Speak`**, and **`Use Voice Activity`** for voice.
+
+**Cost note:** ElevenLabs bills voice conversation minutes at a materially higher rate than
+text conversations — a `/support` call is not "free" the way a widget chat message is.
+
+Run it locally the same way as `serve`:
+
+```powershell
+uv run gatebound-support voicebot
+uv run gatebound-support voicebot --check   # validates settings + opus + imports, no connection, exits 0/1
+```
+
 ## Docker
 
 ```powershell
@@ -86,6 +128,8 @@ reference (all default to `"unset"`, meaning that integration is disabled):
 | `SUPPORT_IDENTITY_SECRET` | HS256 key for the player identity JWT |
 | `MCP_SECRET` | bearer secret ElevenLabs sends on `/mcp` |
 | `ELEVENLABS_API_KEY`, `ELEVENLABS_WEBHOOK_SECRET`, `ELEVENLABS_AGENT_ID` | ElevenLabs API access, post-call webhook HMAC key, and agent id |
-| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_SUPPORT_CHANNEL_ID`, `DISCORD_STAFF_WEBHOOK_URL` | the ticket flow's Discord integration |
+| `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_SUPPORT_CHANNEL_ID`, `DISCORD_STAFF_WEBHOOK_URL` | the ticket flow's Discord integration (`DISCORD_BOT_TOKEN`/`DISCORD_GUILD_ID`/`DISCORD_SUPPORT_CHANNEL_ID` are also what the voicebot process uses) |
+| `VOICE_MAX_MINUTES` | voicebot: max length of a `/support` call in minutes (default 15) |
+| `SUPPORT_INTERNAL_URL` | voicebot: in-cluster base URL of this service's own `/internal` API (default assumes the standard `gatebound-support` namespace/service names) |
 
 Copy `.env.example` to `.env` and fill in what you need; everything else can stay `unset`.

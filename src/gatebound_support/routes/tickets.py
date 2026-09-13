@@ -16,6 +16,7 @@ from .. import store
 from ..discord import DiscordClient
 from ..logging import get_logger
 from ..settings import Settings, enabled
+from ..ticket_formatting import opening_post
 from ..webclient import WebClient
 
 logger = get_logger("gatebound_support.tickets")
@@ -51,27 +52,9 @@ def _redirect_uri(settings: Settings) -> str:
     return f"{_base_url(settings)}/oauth/discord/callback"
 
 
-def _opening_post(
-    *,
-    ticket_id: str,
-    category: str,
-    priority: str,
-    summary: str,
-    account_name: str | None,
-    conversation_id: str | None,
-    discord_user_id: str,
-) -> str:
-    lines = [
-        f"**Ticket:** {ticket_id}",
-        f"**Category:** {category}",
-        f"**Priority:** {priority}",
-        f"**Summary:** {summary}",
-        f"**Account:** {account_name or 'unknown'}",
-        f"**Conversation:** {conversation_id or 'none'}",
-        f"<@{discord_user_id}>",
-        "Transcript follows when the conversation ends.",
-    ]
-    return "\n".join(lines)
+# Kept as a thin alias: this module historically owned the opening-post format; it now
+# lives in ticket_formatting so the voicebot's direct ticket creation can share it too.
+_opening_post = opening_post
 
 
 def build_router(settings: Settings, web_client: WebClient, discord_client: DiscordClient) -> APIRouter:

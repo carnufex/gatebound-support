@@ -184,7 +184,7 @@ def build(template: dict) -> dict:
     ps["privacy"]["retention_days"] = 30
     ps["sentiment_analysis"] = {"enabled": True}
     ps["widget"].update({
-        "supports_text_only": True, "text_input_enabled": True, "default_expanded": False,
+        "supports_text_only": True, "text_input_enabled": True, "default_expanded": False, "disable_banner": True,
         "expandable": "always", "placement": "bottom-right",
         "markdown_link_allowed_hosts": [{"hostname": "gatebound-support.rosenvall.se"}, {"hostname": "gatebound.rosenvall.se"}],
         "markdown_link_allow_http": False, "language_selector": True, "language_presets": {},

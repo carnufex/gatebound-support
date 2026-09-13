@@ -13,6 +13,13 @@ RUN uv sync --frozen --no-dev
 
 FROM python:3.11-slim AS runtime
 
+# libopus0: needed by discord.py's voice support (encoding outbound audio for the
+# voicebot process) — see src/gatebound_support/voicebot/runner.py, which loads it
+# explicitly with discord.opus.load_opus() if ctypes doesn't auto-detect it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libopus0 \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin appuser
 
 WORKDIR /app

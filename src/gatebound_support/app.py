@@ -13,6 +13,7 @@ from .discord import DiscordClient
 from .elevenlabs import ElevenLabsClient
 from .logging import configure_logging, get_logger
 from .mcp_server import build_mcp_server, wrap_with_auth
+from .routes import internal as internal_routes
 from .routes import status as status_routes
 from .routes import tickets as ticket_routes
 from .routes import webhooks as webhook_routes
@@ -65,6 +66,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(webhook_routes.build_router(settings, discord_client, elevenlabs_client))
     app.include_router(status_routes.build_router(settings, web_client, elevenlabs_client, discord_client))
     app.include_router(widget_routes.build_router(settings, elevenlabs_client))
+    app.include_router(internal_routes.build_router(settings))
 
     # Mounted at "/" (last, so real routes win) and serving exactly /mcp inside: see
     # mcp_server.wrap_with_auth for why a Mount("/mcp") would redirect.

@@ -14,6 +14,11 @@ dependencies = [
     "jinja2>=3.1",
     "pyjwt>=2.9",
     "python-multipart>=0.0.12",
+    "discord-py[voice]>=2.4",
+    "discord-ext-voice-recv>=0.5.2a179",
+    "pynacl>=1.5.0",
+    "elevenlabs>=2.68.0",
+    "numpy>=2.4.6",
 ]
 
 [project.scripts]

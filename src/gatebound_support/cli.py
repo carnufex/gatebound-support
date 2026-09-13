@@ -30,14 +30,26 @@ def _kb_sync(argv: list[str]) -> int:
     return kb_sync_main(argv)
 
 
+def _voicebot(argv: list[str]) -> int:
+    from .settings import get_settings
+    from .voicebot.runner import check, run
+
+    settings = get_settings()
+    if "--check" in argv:
+        return check(settings)
+    return run(settings)
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(argv if argv is not None else sys.argv[1:])
-    if not argv or argv[0] not in ("serve", "kb-sync"):
-        print("usage: gatebound-support {serve|kb-sync} ...", file=sys.stderr)
+    if not argv or argv[0] not in ("serve", "kb-sync", "voicebot"):
+        print("usage: gatebound-support {serve|kb-sync|voicebot} ...", file=sys.stderr)
         return 2
     command, rest = argv[0], argv[1:]
     if command == "serve":
         return _serve(rest)
+    if command == "voicebot":
+        return _voicebot(rest)
     return _kb_sync(rest)
 
 

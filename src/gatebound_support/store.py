@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     discord_guild_id TEXT,
     discord_thread_id TEXT,
     discord_user_id TEXT,
+    source TEXT NOT NULL DEFAULT 'web',
     created_at TEXT NOT NULL
 );
 
@@ -79,10 +80,21 @@ def get_connection(data_dir: str) -> Iterator[sqlite3.Connection]:
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys=ON")
         conn.executescript(_SCHEMA)
+        _migrate(conn)
         yield conn
         conn.commit()
     finally:
         conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Additive, idempotent migrations for columns added after the table already existed in
+    production. ``CREATE TABLE IF NOT EXISTS`` above only helps on a fresh database; an
+    existing ``tickets`` table needs ``ALTER TABLE ... ADD COLUMN`` guarded by a check so
+    this runs safely on every connection."""
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(tickets)")}
+    if "source" not in columns:
+        conn.execute("ALTER TABLE tickets ADD COLUMN source TEXT NOT NULL DEFAULT 'web'")
 
 
 def new_draft_token() -> str:
@@ -158,14 +170,18 @@ def create_ticket(
     character_name: str | None,
     conversation_id: str | None,
     status: str,
+    source: str = "web",
 ) -> str:
+    """``source`` distinguishes the widget/ticket-form flow ("web", the default — the only
+    thing older callers pass) from tickets opened straight from Discord ("discord_text",
+    "discord_voice" — see routes/internal.py)."""
     ticket_id = new_ticket_id()
     with get_connection(data_dir) as conn:
         conn.execute(
             """INSERT INTO tickets
                (ticket_id, token, category, summary, priority, account_name, character_name,
-                conversation_id, status, discord_guild_id, discord_thread_id, discord_user_id, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)""",
+                conversation_id, status, discord_guild_id, discord_thread_id, discord_user_id, source, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)""",
             (
                 ticket_id,
                 token,
@@ -176,6 +192,7 @@ def create_ticket(
                 character_name,
                 conversation_id,
                 status,
+                source,
                 _iso(_now()),
             ),
         )
@@ -212,14 +229,40 @@ def update_ticket_discord(
     thread_id: str,
     user_id: str,
     status: str = "open",
+    conversation_id: str | None = None,
 ) -> None:
+    """``conversation_id`` is ``None`` by default so the OAuth ticket flow (which already
+    knows its conversation id, if any, at draft time) keeps the column untouched here; the
+    voicebot's internal PATCH (routes/internal.py) passes it explicitly once the ElevenLabs
+    session id is known, which is what lets the post-call webhook find this ticket's thread."""
     with get_connection(data_dir) as conn:
-        conn.execute(
-            """UPDATE tickets
-               SET discord_guild_id = ?, discord_thread_id = ?, discord_user_id = ?, status = ?
-               WHERE ticket_id = ?""",
-            (guild_id, thread_id, user_id, status, ticket_id),
-        )
+        if conversation_id is not None:
+            conn.execute(
+                """UPDATE tickets
+                   SET discord_guild_id = ?, discord_thread_id = ?, discord_user_id = ?, status = ?,
+                       conversation_id = ?
+                   WHERE ticket_id = ?""",
+                (guild_id, thread_id, user_id, status, conversation_id, ticket_id),
+            )
+        else:
+            conn.execute(
+                """UPDATE tickets
+                   SET discord_guild_id = ?, discord_thread_id = ?, discord_user_id = ?, status = ?
+                   WHERE ticket_id = ?""",
+                (guild_id, thread_id, user_id, status, ticket_id),
+            )
+
+
+def get_open_ticket_for_user(data_dir: str, discord_user_id: str) -> dict[str, Any] | None:
+    """Most recent ``open`` ticket for this Discord user, regardless of source — used to
+    enforce "one open ticket per user at a time" for the bot's ``/ticket`` command and the
+    persistent "Open a ticket" button."""
+    with get_connection(data_dir) as conn:
+        row = conn.execute(
+            "SELECT * FROM tickets WHERE discord_user_id = ? AND status = 'open' ORDER BY created_at DESC LIMIT 1",
+            (discord_user_id,),
+        ).fetchone()
+    return dict(row) if row else None
 
 
 def store_conversation(data_dir: str, conversation_id: str, *, summary: str | None, transcript: list[dict[str, Any]]) -> None:
